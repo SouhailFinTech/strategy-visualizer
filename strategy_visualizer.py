@@ -13,7 +13,18 @@
 ║   3. streamlit run strategy_visualizer.py                    ║
 ╚══════════════════════════════════════════════════════════════╝
 """
+import subprocess
+import sys
 
+packages = [
+    'yfinance', 'matplotlib',
+    'google-generativeai', 'scipy'
+]
+for pkg in packages:
+    subprocess.check_call([
+        sys.executable, '-m', 'pip',
+        'install', '-q', pkg
+    ])
 import streamlit as st
 import pandas as pd
 import numpy as np
