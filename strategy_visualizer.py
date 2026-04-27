@@ -158,39 +158,51 @@ def init_llm():
 # ─────────────────────────────────────────────────────────────
 # DATA — BINANCE (primary) + COINGECKO (fallback) + CSV (manual)
 # ─────────────────────────────────────────────────────────────
-@st.cache_data(ttl=300)
 def fetch_binance(symbol: str, period: str):
+    """Fetch from Binance with 3 retries"""
     sym   = BINANCE_SYMBOLS.get(symbol.upper())
     limit = BINANCE_LIMITS.get(period, 90)
     if not sym:
         return None
-    try:
-        resp = requests.get(
-            "https://api.binance.com/api/v3/klines",
-            params={'symbol': sym, 'interval': '1d', 'limit': min(limit, 1000)},
-            timeout=15, headers={'User-Agent': 'QuantAlpha/1.0'}
-        )
-        if resp.status_code != 200:
-            return None
-        data = resp.json()
-        if not data:
-            return None
-        df = pd.DataFrame(data, columns=[
-            'timestamp','Open','High','Low','Close','Volume',
-            'ct','qv','nt','tbb','tbq','ignore'
-        ])
-        df['Date'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df = df.set_index('Date')
-        df = df[['Open','High','Low','Close','Volume']].astype(float)
-        return df.dropna()
-    except Exception:
-        return None
+
+    import time
+    for attempt in range(3):
+        try:
+            resp = requests.get(
+                "https://api.binance.com/api/v3/klines",
+                params={'symbol': sym, 'interval': '1d',
+                        'limit': min(limit, 1000)},
+                timeout=15,
+                headers={'User-Agent': 'QuantAlpha/1.0'}
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data:
+                    df = pd.DataFrame(data, columns=[
+                        'timestamp','Open','High','Low','Close','Volume',
+                        'ct','qv','nt','tbb','tbq','ignore'
+                    ])
+                    df['Date'] = pd.to_datetime(df['timestamp'], unit='ms')
+                    df = df.set_index('Date')
+                    df = df[['Open','High','Low','Close','Volume']].astype(float)
+                    return df.dropna()
+            # Wait before retry
+            if attempt < 2:
+                time.sleep(2)
+        except Exception:
+            if attempt < 2:
+                time.sleep(2)
+    return None
 
 
-@st.cache_data(ttl=300)
 def fetch_coingecko(symbol: str, days: int):
+    """Fetch from CoinGecko free API"""
     coin_id = COINGECKO_IDS.get(symbol.upper(), symbol.lower())
-    api_key = st.secrets.get("COINGECKO_API_KEY", "")
+    api_key = ""
+    try:
+        api_key = st.secrets.get("COINGECKO_API_KEY", "")
+    except Exception:
+        pass
     headers = {'User-Agent': 'QuantAlpha/1.0'}
     if api_key:
         headers['x-cg-demo-api-key'] = api_key
@@ -205,7 +217,9 @@ def fetch_coingecko(symbol: str, days: int):
         data = resp.json()
         if not data or not isinstance(data, list):
             return None
-        df = pd.DataFrame(data, columns=['timestamp','Open','High','Low','Close'])
+        df = pd.DataFrame(
+            data, columns=['timestamp','Open','High','Low','Close']
+        )
         df['Date'] = pd.to_datetime(df['timestamp'], unit='ms')
         df = df.set_index('Date').drop('timestamp', axis=1).astype(float)
         df['Volume'] = 0.0
@@ -215,43 +229,170 @@ def fetch_coingecko(symbol: str, days: int):
 
 
 def load_csv(uploaded_file):
+    """
+    Load CSV — supports multiple formats:
+    1. MT5 format: tab-separated, date+time columns, 2023.01.01 date format
+    2. Standard format: Date/Open/High/Low/Close columns
+    3. Any reasonable OHLC CSV
+    """
+    import io
+
     try:
+        # Read raw bytes first to detect format
+        raw = uploaded_file.read()
+        uploaded_file.seek(0)
+
+        # ── Try MT5 format first ──────────────────────────────
+        # MT5 exports: <DATE>\t<TIME>\t<OPEN>\t<HIGH>\t<LOW>\t<CLOSE>\t...
+        # With a header row that starts with <
+        try:
+            content = raw.decode('utf-8')
+            lines   = content.strip().split('\n')
+
+            # Detect MT5 by checking if first line has <DATE> or tab-separated
+            is_mt5 = ('<DATE>' in lines[0] or
+                      '\t' in lines[0] or
+                      lines[0].startswith('<'))
+
+            if is_mt5:
+                # Remove angle brackets from headers
+                header = lines[0].replace('<','').replace('>','').strip()
+                cols   = [c.strip().lower() for c in header.split('\t')]
+
+                rows = []
+                for line in lines[1:]:
+                    if line.strip():
+                        rows.append(line.strip().split('\t'))
+
+                df = pd.DataFrame(rows, columns=cols)
+
+                # MT5 has separate date and time columns
+                if 'date' in cols and 'time' in cols:
+                    df['datetime'] = pd.to_datetime(
+                        df['date'] + ' ' + df['time'],
+                        format='%Y.%m.%d %H:%M:%S',
+                        errors='coerce'
+                    )
+                    # Fallback format without seconds
+                    mask = df['datetime'].isna()
+                    if mask.any():
+                        df.loc[mask, 'datetime'] = pd.to_datetime(
+                            df.loc[mask,'date'] + ' ' + df.loc[mask,'time'],
+                            format='%Y.%m.%d %H:%M',
+                            errors='coerce'
+                        )
+                    df = df.set_index('datetime')
+                elif 'date' in cols:
+                    df.index = pd.to_datetime(
+                        df['date'], format='%Y.%m.%d', errors='coerce'
+                    )
+                    df = df.drop(columns=['date'], errors='ignore')
+
+                df.index.name = 'Date'
+
+                # Rename MT5 columns to standard names
+                rename_map = {
+                    'open': 'Open', 'high': 'High',
+                    'low': 'Low',   'close': 'Close',
+                    'vol': 'Volume', 'tickvol': 'Volume',
+                    'tick volume': 'Volume', 'volume': 'Volume'
+                }
+                df = df.rename(columns=rename_map)
+
+                # Keep required columns
+                required = ['Open','High','Low','Close']
+                missing  = [c for c in required if c not in df.columns]
+                if missing:
+                    st.error(f"MT5 CSV missing columns: {missing}")
+                    return None
+
+                if 'Volume' not in df.columns:
+                    df['Volume'] = 0.0
+
+                df = df[['Open','High','Low','Close','Volume']].astype(float)
+                df = df.dropna().sort_index()
+
+                if len(df) > 0:
+                    st.success(
+                        f"✅ MT5 format detected — {len(df):,} bars loaded"
+                    )
+                    return df
+
+        except Exception:
+            pass
+
+        # ── Try standard CSV format ───────────────────────────
+        uploaded_file.seek(0)
         df = pd.read_csv(uploaded_file)
         df.columns = [c.strip().title() for c in df.columns]
+
+        # Find date column
         date_col = next(
-            (c for c in ['Date','Timestamp','Time','Datetime'] if c in df.columns),
+            (c for c in ['Date','Datetime','Timestamp','Time','Open Time']
+             if c in df.columns),
             None
         )
-        if not date_col:
-            st.error("CSV needs a Date or Timestamp column")
-            return None
-        df[date_col] = pd.to_datetime(df[date_col])
+        if date_col is None:
+            # Try first column as date
+            first_col = df.columns[0]
+            try:
+                pd.to_datetime(df[first_col].iloc[0])
+                date_col = first_col
+            except Exception:
+                st.error(
+                    "Cannot find date column. "
+                    "Expected: Date, Datetime, Timestamp, or Time"
+                )
+                return None
+
+        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
         df = df.set_index(date_col)
         df.index.name = 'Date'
-        for col in ['Open','High','Low','Close']:
-            if col not in df.columns:
-                st.error(f"CSV missing column: {col}")
-                return None
+
+        # Check required columns
+        required = ['Open','High','Low','Close']
+        missing  = [c for c in required if c not in df.columns]
+        if missing:
+            st.error(f"CSV missing columns: {missing}")
+            return None
+
         if 'Volume' not in df.columns:
             df['Volume'] = 0.0
-        return df[['Open','High','Low','Close','Volume']].astype(float).dropna().sort_index()
+
+        df = df[['Open','High','Low','Close','Volume']].astype(float)
+        df = df.dropna().sort_index()
+        return df
+
     except Exception as e:
         st.error(f"CSV error: {e}")
         return None
 
 
 def fetch_data(symbol, period, uploaded_file=None):
+    """Try all data sources in order"""
+
+    # 1. User CSV upload (highest priority)
     if uploaded_file is not None:
+        uploaded_file.seek(0)
         df = load_csv(uploaded_file)
         if df is not None and len(df) > 30:
             return df, "📁 Your CSV"
+        else:
+            st.warning(
+                "CSV uploaded but could not be read. "
+                "Trying live data sources..."
+            )
 
-    df = fetch_binance(symbol, period)
+    # 2. Binance (most reliable for crypto)
+    with st.spinner("📡 Trying Binance..."):
+        df = fetch_binance(symbol, period)
     if df is not None and len(df) > 30:
         return df, "🟡 Binance"
 
-    days = PERIOD_DAYS.get(period, 90)
-    df = fetch_coingecko(symbol, days)
+    # 3. CoinGecko fallback
+    with st.spinner("📡 Trying CoinGecko..."):
+        days = PERIOD_DAYS.get(period, 90)
+        df   = fetch_coingecko(symbol, days)
     if df is not None and len(df) > 30:
         return df, "🦎 CoinGecko"
 
