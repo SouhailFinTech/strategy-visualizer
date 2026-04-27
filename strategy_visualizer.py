@@ -309,58 +309,218 @@ IMPORTANT:
 
 
 def generate_python_code(client, strategy: dict, symbol: str) -> str:
-    has_long  = strategy.get('entry_long')  is not None
-    has_short = strategy.get('entry_short') is not None
-
-    if has_long and not has_short:
-        direction = "LONG ONLY. Position = 1 when in trade, 0 when flat. Never go short."
-    elif has_short and not has_long:
-        direction = "SHORT ONLY. Position = -1 when in trade, 0 when flat. Never go long."
-    else:
-        direction = "LONG AND SHORT. Position = 1 for long, -1 for short, 0 for flat."
-
+    has_long    = strategy.get('entry_long')  is not None
+    has_short   = strategy.get('entry_short') is not None
     binance_sym = BINANCE_SYMBOLS.get(symbol.upper(), 'BTCUSDT')
+    sl_pct      = strategy.get('sl_pct', 0.02)
+    tp_pct      = strategy.get('tp_pct', 0.06)
+    params      = strategy.get('indicator_params', {})
+    ema_fast    = params.get('ema_fast', 20)
+    ema_slow    = params.get('ema_slow', 50)
+    rsi_period  = params.get('rsi_period', 14)
+    rsi_ob      = params.get('rsi_overbought', 70)
+    rsi_os      = params.get('rsi_oversold', 30)
+    stype       = strategy.get('strategy_type', 'trend')
+    summary     = strategy.get('summary', 'EMA Strategy')
 
-    prompt = f"""Generate a complete runnable Python backtesting script.
+    # Build indicator code based on strategy type
+    if stype in ['trend', 'momentum']:
+        indicator_code = f"""
+    # Calculate EMAs
+    df['EMA_fast'] = df['Close'].ewm(span={ema_fast}, adjust=False).mean()
+    df['EMA_slow'] = df['Close'].ewm(span={ema_slow}, adjust=False).mean()"""
 
-Strategy: {json.dumps(strategy, indent=2)}
-Asset: {symbol}
-Binance symbol: {binance_sym}
-Direction: {direction}
+        long_signal_code  = f"(df['EMA_fast'] > df['EMA_slow']) & (df['EMA_fast'].shift(1) <= df['EMA_slow'].shift(1))"
+        short_signal_code = f"(df['EMA_fast'] < df['EMA_slow']) & (df['EMA_fast'].shift(1) >= df['EMA_slow'].shift(1))"
 
-Fetch data from Binance:
-import requests
-resp = requests.get('https://api.binance.com/api/v3/klines',
-    params={{'symbol': '{binance_sym}', 'interval': '1d', 'limit': 365}})
+    elif stype == 'mean-reversion':
+        indicator_code = f"""
+    # Calculate RSI
+    delta = df['Close'].diff()
+    gain  = delta.clip(lower=0).rolling({rsi_period}).mean()
+    loss  = (-delta.clip(upper=0)).rolling({rsi_period}).mean()
+    df['RSI'] = 100 - (100 / (1 + gain / loss.replace(0, float('nan'))))"""
 
-STRICT RULES — every rule is mandatory:
-1. Direction is {direction} — do not add any signals not requested
-2. Signal column = 1 when entry condition met, 0 otherwise
-3. Position column = Signal.shift(1) directly — NEVER use cumsum()
-4. Position values must only be: 0, 1, or -1
-5. Entry price = next bar Open (use shift to avoid lookahead)
-6. Commission = 0.1% applied only when position changes
-7. Calculate and print: Sharpe ratio, max drawdown, win rate, total return
-8. Plot equity curve with plotly dark theme
-9. Add clear comments explaining each section
-10. Handle API errors gracefully with try/except
+        long_signal_code  = f"(df['RSI'] < {rsi_os}) & (df['RSI'].shift(1) >= {rsi_os})"
+        short_signal_code = f"(df['RSI'] > {rsi_ob}) & (df['RSI'].shift(1) <= {rsi_ob})"
 
-Return ONLY Python code. No explanation. No markdown."""
+    else:  # breakout
+        indicator_code = f"""
+    # Calculate Bollinger Bands
+    df['BB_mid']   = df['Close'].rolling(20).mean()
+    df['BB_upper'] = df['BB_mid'] + 2 * df['Close'].rolling(20).std()
+    df['BB_lower'] = df['BB_mid'] - 2 * df['Close'].rolling(20).std()"""
+
+        long_signal_code  = f"(df['Close'] > df['BB_upper']) & (df['Close'].shift(1) <= df['BB_upper'].shift(1))"
+        short_signal_code = f"(df['Close'] < df['BB_lower']) & (df['Close'].shift(1) >= df['BB_lower'].shift(1))"
+
+    # Build signal block based on direction
+    if has_long and not has_short:
+        signal_block = f"""
+    # Long only — no short signals
+    df['long_signal']  = {long_signal_code}
+    df['short_signal'] = False
+    df['Signal']       = df['long_signal'].astype(int)"""
+    elif has_short and not has_long:
+        signal_block = f"""
+    # Short only — no long signals
+    df['long_signal']  = False
+    df['short_signal'] = {short_signal_code}
+    df['Signal']       = -df['short_signal'].astype(int)"""
+    else:
+        signal_block = f"""
+    # Both long and short
+    df['long_signal']  = {long_signal_code}
+    df['short_signal'] = {short_signal_code}
+    df['Signal']       = df['long_signal'].astype(int) - df['short_signal'].astype(int)"""
+
+    # Now ask Groq ONLY to fill in the chart section
+    # We generate the entire backtest ourselves — only chart needs customization
+    prompt = f"""Complete this Python backtesting script by writing ONLY the plot_results() function body.
+The function receives a DataFrame with these columns:
+- Open time (datetime), Open, High, Low, Close, Volume
+- EMA_fast, EMA_slow (or RSI or BB_mid/BB_upper/BB_lower depending on strategy)
+- long_signal (bool), short_signal (bool)
+- Strategy_Equity (float), BH_Equity (float)
+
+Strategy type: {stype}
+Summary: {summary}
+Symbol: {symbol}
+
+Write the function body that:
+1. Creates a plotly make_subplots(rows=2) figure with dark theme
+2. Row 1: candlesticks + indicators + green triangle-up markers where long_signal==True + red triangle-down where short_signal==True
+3. Row 2: Strategy_Equity line (green) + BH_Equity line (gray dashed)
+4. paper_bgcolor='#080a0f', plot_bgcolor='#0d0f14'
+5. Returns the fig object
+
+Write ONLY the function body lines (no def line, no imports). Use 4-space indent."""
 
     try:
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=2500, temperature=0.1
+            max_tokens=1500, temperature=0.1
         )
-        text = response.choices[0].message.content.strip()
-        if '```python' in text:
-            text = text.split('```python')[1].split('```')[0]
-        elif '```' in text:
-            text = text.split('```')[1].split('```')[0]
-        return text.strip()
+        chart_body = response.choices[0].message.content.strip()
+        if '```python' in chart_body:
+            chart_body = chart_body.split('```python')[1].split('```')[0]
+        elif '```' in chart_body:
+            chart_body = chart_body.split('```')[1].split('```')[0]
+
+        # Indent chart body properly
+        chart_lines = '\n'.join(
+            '    ' + line if line.strip() else line
+            for line in chart_body.strip().splitlines()
+        )
+
     except Exception as e:
-        return f"# Error generating code: {e}"
+        chart_lines = f"    fig = go.Figure()\n    return fig  # chart error: {e}"
+
+    # Build the complete script ourselves — no LLM involved in critical math
+    code = f"""import requests
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+# ── Fetch OHLCV from Binance ──────────────────────────────────
+def fetch_data():
+    try:
+        resp = requests.get(
+            'https://api.binance.com/api/v3/klines',
+            params={{'symbol': '{binance_sym}', 'interval': '1d', 'limit': 365}}
+        )
+        resp.raise_for_status()
+        raw = resp.json()
+        df = pd.DataFrame(raw, columns=[
+            'Open time','Open','High','Low','Close','Volume',
+            'ct','qv','nt','tbb','tbq','ignore'
+        ])
+        df['Open time'] = pd.to_datetime(df['Open time'], unit='ms')
+        for col in ['Open','High','Low','Close','Volume']:
+            df[col] = pd.to_numeric(df[col])
+        df = df.drop(columns=['ct','qv','nt','tbb','tbq','ignore'])
+        return df
+    except Exception as e:
+        print(f"Data error: {{e}}")
+        return None
+
+# ── Add indicators ────────────────────────────────────────────
+def add_indicators(df):
+    {indicator_code.strip()}
+    return df
+
+# ── Generate signals ──────────────────────────────────────────
+def generate_signals(df):
+    {signal_block.strip()}
+    # Shift signal by 1 bar to avoid lookahead bias
+    df['Position'] = df['Signal'].shift(1).fillna(0)
+    return df
+
+# ── Backtest — returns and equity ─────────────────────────────
+def backtest(df):
+    # Daily returns
+    df['Return'] = df['Close'].pct_change()
+
+    # Commission: 0.1% only when position changes
+    df['Commission'] = np.where(
+        df['Position'] != df['Position'].shift(1), 0.001, 0
+    )
+
+    # Strategy return = return × position − commission
+    df['Strategy_Return'] = df['Return'] * df['Position'] - df['Commission']
+
+    # Equity curves (start at 1.0)
+    df['BH_Equity']       = (1 + df['Return']).cumprod()
+    df['Strategy_Equity'] = (1 + df['Strategy_Return']).cumprod()
+
+    return df
+
+# ── Performance metrics ───────────────────────────────────────
+def metrics(df):
+    r        = df['Strategy_Return'].dropna()
+    sharpe   = r.mean() / r.std() * np.sqrt(252) if r.std() > 0 else 0
+    roll_max = df['Strategy_Equity'].cummax()
+    max_dd   = ((df['Strategy_Equity'] - roll_max) / roll_max).min()
+    win_rate = (r > 0).mean()
+    total_r  = df['Strategy_Equity'].iloc[-1] - 1
+    n_trades = int((df['Position'] != df['Position'].shift(1)).sum() / 2)
+    return sharpe, max_dd, win_rate, total_r, n_trades
+
+# ── Chart ─────────────────────────────────────────────────────
+def plot_results(df):
+{chart_lines}
+
+# ── Main ──────────────────────────────────────────────────────
+def main():
+    df = fetch_data()
+    if df is None:
+        return
+
+    df = add_indicators(df)
+    df = generate_signals(df)
+    df = backtest(df)
+
+    sharpe, max_dd, win_rate, total_r, n_trades = metrics(df)
+
+    print("=" * 45)
+    print(f"  {symbol} — {summary}")
+    print("=" * 45)
+    print(f"  Sharpe Ratio : {{sharpe:.2f}}")
+    print(f"  Max Drawdown : {{max_dd:.1%}}")
+    print(f"  Win Rate     : {{win_rate:.1%}}")
+    print(f"  Total Return : {{total_r:.1%}}")
+    print(f"  Trades       : {{n_trades}}")
+    print("=" * 45)
+
+    fig = plot_results(df)
+    fig.show()
+
+if __name__ == '__main__':
+    main()
+"""
+    return code
 
 # ─────────────────────────────────────────────────────────────
 # INDICATORS
