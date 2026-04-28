@@ -527,7 +527,8 @@ Output ONLY the Python lines."""
         )
 
 
-def generate_python_code(client, strategy: dict, symbol: str) -> str:
+def generate_python_code(client, strategy: dict, symbol: str,
+                          description: str = '') -> str:
     """
     100% hardcoded code generation — zero Groq involvement.
     Groq only parses the strategy description into JSON (done earlier).
@@ -906,42 +907,43 @@ def generate_signals(df, strategy):
     wants_long  = strategy.get('entry_long')  is not None
     wants_short = strategy.get('entry_short') is not None
 
-    df['long_signal']  = False
-    df['short_signal'] = False
+    # Always initialize as proper boolean Series — never scalar
+    df['long_signal']  = pd.Series(False, index=df.index)
+    df['short_signal'] = pd.Series(False, index=df.index)
 
     if stype in ['trend', 'momentum']:
         if wants_long:
             df['long_signal'] = (
                 (df['EMA_fast'] > df['EMA_slow']) &
                 (df['EMA_fast'].shift(1) <= df['EMA_slow'].shift(1))
-            )
+            ).fillna(False)
         if wants_short:
             df['short_signal'] = (
                 (df['EMA_fast'] < df['EMA_slow']) &
                 (df['EMA_fast'].shift(1) >= df['EMA_slow'].shift(1))
-            )
+            ).fillna(False)
 
     elif stype == 'mean-reversion':
         if wants_long:
             df['long_signal'] = (
                 (df['RSI'] < ros) & (df['RSI'].shift(1) >= ros)
-            )
+            ).fillna(False)
         if wants_short:
             df['short_signal'] = (
                 (df['RSI'] > rob) & (df['RSI'].shift(1) <= rob)
-            )
+            ).fillna(False)
 
     elif stype == 'breakout':
         if wants_long:
             df['long_signal'] = (
                 (df['Close'] > df['BB_upper']) &
                 (df['Close'].shift(1) <= df['BB_upper'].shift(1))
-            )
+            ).fillna(False)
         if wants_short:
             df['short_signal'] = (
                 (df['Close'] < df['BB_lower']) &
                 (df['Close'].shift(1) >= df['BB_lower'].shift(1))
-            )
+            ).fillna(False)
 
     return df
 
