@@ -1195,55 +1195,121 @@ IMPORTANT:
         return None
 
 
+def detect_advanced_features(description: str) -> dict:
+    """
+    Detect advanced features mentioned by user that need
+    special handling in the backtest loop.
+    """
+    desc_lower = description.lower()
+    return {
+        'has_partial_close': any(w in desc_lower for w in
+            ['partial', 'partial close', 'scale out', '30%', '50%', 'portion']),
+        'has_trailing_stop': any(w in desc_lower for w in
+            ['trail', 'trailing', 'trailing stop', 'trail stop']),
+        'has_both_directions': any(w in desc_lower for w in
+            ['short', 'sell', 'both', 'long and short']),
+        'has_long': any(w in desc_lower for w in
+            ['buy', 'long', 'bullish', 'above']),
+    }
+
+
 def generate_signal_block(client, description: str) -> str:
     """
-    AI writes ONLY the signal lines.
-    Everything else (backtest, metrics, chart) is hardcoded by us.
-    AI is given the full indicator library so it calls functions
-    instead of writing formulas — minimizes errors dramatically.
+    AI writes ONLY the signal detection lines.
+    Uses pre-built indicator library to minimize formula errors.
+
+    WHY IT FAILED BEFORE:
+    1. Prompt example was long-only — Groq copied it for long+short
+    2. df['Signal'] was never mentioned — Groq forgot to create it
+    3. Partial close/trailing stop were never mentioned — Groq ignored them
+    4. No validation of output — broken code passed through silently
+
+    HOW WE FIX IT:
+    1. Detect direction (long/short/both) before calling Groq
+    2. Give Groq explicit examples for every case
+    3. Enforce df['Signal'] creation in the prompt
+    4. Validate output and fix common mistakes automatically
     """
 
-    # Import the library reference
-    try:
-        from quant_indicators import LIBRARY_REFERENCE
-    except ImportError:
-        LIBRARY_REFERENCE = "Use standard pandas/numpy indicator calculations."
+    features = detect_advanced_features(description)
+    has_long  = features['has_long'] or not features['has_both_directions']
+    has_short = features['has_both_directions']
 
-    prompt = f"""You are a Python quant developer.
-Your ONLY job: write the signal code for this strategy.
-
-STRATEGY: "{description}"
-
-You have access to a pre-built indicator library already imported as:
-from quant_indicators import *
-
-{LIBRARY_REFERENCE}
-
-RULES — follow every rule exactly:
-1. Call library functions to calculate indicators — do NOT write indicator formulas yourself
-2. Example: df = add_ema(df, 20) then use df['EMA_20'] — never write ewm() yourself
-3. df['long_signal'] must be a boolean pd.Series
-4. df['short_signal'] must be a boolean pd.Series
-5. If only long requested: df['short_signal'] = pd.Series(False, index=df.index)
-6. If only short requested: df['long_signal'] = pd.Series(False, index=df.index)
-7. Use crossover() / crossunder() helpers for crossovers — never write (a > b) & (a.shift(1) <= b.shift(1)) yourself
-8. End both signal lines with .fillna(False)
-9. Return ONLY Python lines — no def, no imports, no explanation, no markdown
-
-EXAMPLE OUTPUT for "buy when EMA 20 crosses EMA 50":
+    # Build direction-specific example
+    if has_long and has_short:
+        direction_rule = "BOTH long and short signals requested"
+        example = """\
+# EXAMPLE for long AND short strategy:
+df = add_ema(df, 20)
+df = add_ema(df, 50)
+df['long_signal']  = crossover(df['EMA_20'], df['EMA_50']).fillna(False)
+df['short_signal'] = crossunder(df['EMA_20'], df['EMA_50']).fillna(False)
+df['Signal']       = df['long_signal'].astype(int) - df['short_signal'].astype(int)
+# Signal values: 1=long, -1=short, 0=flat"""
+    elif has_short and not has_long:
+        direction_rule = "SHORT only — no long signals"
+        example = """\
+# EXAMPLE for short-only strategy:
+df = add_rsi(df, 14)
+df['long_signal']  = pd.Series(False, index=df.index)
+df['short_signal'] = above_level(df['RSI_14'], 70).fillna(False)
+df['Signal']       = -df['short_signal'].astype(int)
+# Signal values: -1=short, 0=flat"""
+    else:
+        direction_rule = "LONG only — no short signals"
+        example = """\
+# EXAMPLE for long-only strategy:
 df = add_ema(df, 20)
 df = add_ema(df, 50)
 df['long_signal']  = crossover(df['EMA_20'], df['EMA_50']).fillna(False)
 df['short_signal'] = pd.Series(False, index=df.index)
+df['Signal']       = df['long_signal'].astype(int)
+# Signal values: 1=long, 0=flat"""
+
+    # Partial close + trailing note
+    advanced_note = ""
+    if features['has_partial_close'] or features['has_trailing_stop']:
+        advanced_note = """
+NOTE ON PARTIAL CLOSE / TRAILING STOP:
+These features cannot be implemented with simple signal columns.
+They require a trade simulation loop which is handled separately.
+For now, implement the ENTRY signals only.
+Mark the positions with comments:
+# PARTIAL CLOSE: 30% at first target — handled in trade loop
+# TRAILING STOP: 70% trail — handled in trade loop
+"""
+
+    prompt = f"""You are a Python quant developer writing signal detection code.
+
+STRATEGY: "{description}"
+DIRECTION: {direction_rule}
+
+AVAILABLE LIBRARY (already imported — call these, never write formulas):
+{LIBRARY_REFERENCE}
+
+MANDATORY RULES:
+1. ALWAYS call library functions — never write ewm(), rolling(), etc. yourself
+2. df['long_signal'] MUST be a boolean pd.Series ending with .fillna(False)
+3. df['short_signal'] MUST be a boolean pd.Series ending with .fillna(False)
+4. df['Signal'] MUST always be created as the LAST line:
+   - Long only:  df['Signal'] = df['long_signal'].astype(int)
+   - Short only: df['Signal'] = -df['short_signal'].astype(int)
+   - Both:       df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)
+5. Use crossover() for crosses above, crossunder() for crosses below
+6. Use above_level() for threshold crosses, below_level() for threshold crosses
+7. Output ONLY Python lines — no def, no imports, no markdown, no explanation
+{advanced_note}
+FOLLOW THIS EXACT PATTERN:
+{example}
 
 Now write signal code for: "{description}"
-Output ONLY the Python lines."""
+Output ONLY the Python lines. No explanation."""
 
     try:
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=600,
+            max_tokens=800,
             temperature=0.0
         )
         text = response.choices[0].message.content.strip()
@@ -1252,12 +1318,51 @@ Output ONLY the Python lines."""
         elif '```' in text:
             text = text.split('```')[1].split('```')[0]
 
-        # Strip all existing indentation then add exactly 4 spaces
-        lines = text.strip().splitlines()
-        # Remove import lines — library already imported in generated code
-        lines = [l for l in lines
+        # Clean lines
+        lines = [l for l in text.strip().splitlines()
                  if not l.strip().startswith('import ')
                  and not l.strip().startswith('from ')]
+
+        # ── AUTO-REPAIR: fix common Groq mistakes ────────────
+
+        joined = '\n'.join(lines)
+
+        # Repair 1: Signal column missing — add it
+        if "df['Signal']" not in joined and 'df["Signal"]' not in joined:
+            if has_long and has_short:
+                lines.append("df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)")
+            elif has_short:
+                lines.append("df['Signal'] = -df['short_signal'].astype(int)")
+            else:
+                lines.append("df['Signal'] = df['long_signal'].astype(int)")
+
+        # Repair 2: long_signal missing
+        if "df['long_signal']" not in joined and 'df["long_signal"]' not in joined:
+            lines.insert(0, "df['long_signal'] = pd.Series(False, index=df.index)")
+
+        # Repair 3: short_signal missing
+        if "df['short_signal']" not in joined and 'df["short_signal"]' not in joined:
+            lines.insert(0, "df['short_signal'] = pd.Series(False, index=df.index)")
+
+        # Repair 4: fillna missing on signal lines
+        repaired = []
+        for line in lines:
+            stripped = line.strip()
+            # Add .fillna(False) to boolean signal assignments that lack it
+            if (("long_signal']  =" in line or "long_signal'] =" in line or
+                 'long_signal"] =' in line) and
+                'fillna' not in line and
+                'pd.Series' not in line):
+                line = line.rstrip() + '.fillna(False)'
+            if (("short_signal']  =" in line or "short_signal'] =" in line or
+                 'short_signal"] =' in line) and
+                'fillna' not in line and
+                'pd.Series' not in line):
+                line = line.rstrip() + '.fillna(False)'
+            repaired.append(line)
+        lines = repaired
+
+        # Indent exactly 4 spaces
         signal_block = '\n'.join(
             '    ' + line.lstrip() if line.strip() else ''
             for line in lines
@@ -1266,9 +1371,16 @@ Output ONLY the Python lines."""
 
     except Exception as e:
         # Safe fallback — no signals, won't crash
+        if has_long and has_short:
+            sig_line = "    df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)"
+        elif has_short:
+            sig_line = "    df['Signal'] = -df['short_signal'].astype(int)"
+        else:
+            sig_line = "    df['Signal'] = df['long_signal'].astype(int)"
         return (
             "    df['long_signal']  = pd.Series(False, index=df.index)\n"
             "    df['short_signal'] = pd.Series(False, index=df.index)\n"
+            f"{sig_line}\n"
             f"    # Signal generation failed: {e}"
         )
 
@@ -1465,13 +1577,7 @@ def fetch_data():
         return None
 
 
-# ── Add indicators ────────────────────────────────────────────
-def add_indicators(df):
-{indicator_block}
-    return df
-
-
-# ── Generate signals ──────────────────────────────────────────
+# ── Generate signals (indicators + signal logic combined) ─────
 def generate_signals(df):
 {signal_block}
     # Shift by 1 bar — prevents lookahead bias
@@ -1480,21 +1586,92 @@ def generate_signals(df):
 
 
 # ── Backtest ──────────────────────────────────────────────────
-def backtest(df):
-    # Daily close-to-close returns
-    df["Return"] = df["Close"].pct_change()
+def backtest(df, sl_pct={sl_pct}, tp_pct={tp_pct},
+             trail_pct=None, partial_close_pct=None):
+    """
+    Vectorized backtest with optional trailing stop and partial close.
+    sl_pct        : stop loss as decimal (0.02 = 2%)
+    tp_pct        : take profit as decimal (0.06 = 6%)
+    trail_pct     : trailing stop as decimal (None = disabled)
+    partial_close_pct : partial close at first target (None = disabled)
+    """
+    df["Return"]   = df["Close"].pct_change()
 
-    # Commission 0.1% only when position changes (entry/exit)
-    df["Commission"] = np.where(
-        df["Position"] != df["Position"].shift(1), 0.001, 0
-    )
+    if trail_pct is None:
+        # ── Simple vectorized backtest ─────────────────────────
+        df["Commission"]      = np.where(
+            df["Position"] != df["Position"].shift(1), 0.001, 0
+        )
+        df["Strategy_Return"] = df["Return"] * df["Position"] - df["Commission"]
+        df["BH_Equity"]       = (1 + df["Return"]).cumprod()
+        df["Strategy_Equity"] = (1 + df["Strategy_Return"]).cumprod()
+    else:
+        # ── Trade simulation loop (for trailing stop / partial close) ──
+        equity     = 1.0
+        bh_equity  = 1.0
+        equities   = []
+        bh_equities= []
+        position   = 0
+        entry_price= None
+        trail_high = None
+        trail_low  = None
+        partial_done = False
 
-    # Strategy daily return = market return × position − commission
-    df["Strategy_Return"] = df["Return"] * df["Position"] - df["Commission"]
+        prices = df["Close"].values
+        returns= df["Return"].fillna(0).values
 
-    # Cumulative equity curves starting at 1.0
-    df["BH_Equity"]       = (1 + df["Return"]).cumprod()
-    df["Strategy_Equity"] = (1 + df["Strategy_Return"]).cumprod()
+        for i in range(len(df)):
+            bh_equity *= (1 + returns[i])
+            new_pos    = int(df["Position"].iloc[i])
+
+            # Open new position
+            if position == 0 and new_pos != 0:
+                position    = new_pos
+                entry_price = prices[i]
+                trail_high  = prices[i]
+                trail_low   = prices[i]
+                partial_done= False
+                equity      *= (1 - 0.001)  # commission
+
+            elif position != 0:
+                price = prices[i]
+
+                # Update trailing reference
+                if position == 1:
+                    trail_high = max(trail_high, price)
+                    trail_stop = trail_high * (1 - trail_pct)
+                    hit_sl     = price <= entry_price * (1 - sl_pct)
+                    hit_tp     = price >= entry_price * (1 + tp_pct)
+                    hit_trail  = price <= trail_stop and price < trail_high
+                else:  # short
+                    trail_low  = min(trail_low, price)
+                    trail_stop = trail_low  * (1 + trail_pct)
+                    hit_sl     = price >= entry_price * (1 + sl_pct)
+                    hit_tp     = price <= entry_price * (1 - tp_pct)
+                    hit_trail  = price >= trail_stop and price > trail_low
+
+                # Partial close at 30% of position
+                if partial_close_pct and not partial_done and hit_tp:
+                    partial_return = (price / entry_price - 1) * position * partial_close_pct
+                    equity        *= (1 + partial_return - 0.001)
+                    partial_done   = True
+
+                # Full close
+                if hit_sl or hit_trail or (hit_tp and not partial_close_pct):
+                    close_return = (price / entry_price - 1) * position
+                    remaining    = (1 - partial_close_pct) if partial_done and partial_close_pct else 1.0
+                    equity      *= (1 + close_return * remaining - 0.001)
+                    position     = 0
+                    entry_price  = None
+                else:
+                    equity *= (1 + returns[i] * position)
+
+            equities.append(equity)
+            bh_equities.append(bh_equity)
+
+        df["Strategy_Equity"] = equities
+        df["BH_Equity"]       = bh_equities
+        df["Strategy_Return"] = pd.Series(equities).pct_change().fillna(0).values
 
     return df
 
@@ -1513,6 +1690,11 @@ def metrics(df):
 
 # ── Chart ─────────────────────────────────────────────────────
 def plot_results(df):
+    # Detect available indicator columns for chart
+    ind_cols = [c for c in df.columns if c.startswith('EMA_') or
+                c.startswith('SMA_') or c in ['BB_Upper','BB_Lower','BB_Mid',
+                'MACD','RSI_14','Supertrend']]
+
     fig = make_subplots(
         rows=2, cols=1, shared_xaxes=True,
         vertical_spacing=0.05, row_heights=[0.70, 0.30]
@@ -1530,17 +1712,14 @@ def plot_results(df):
         decreasing_fillcolor="#ef5350",
     ), row=1, col=1)
 
-    # Indicator lines
-    fig.add_trace(go.Scatter(
-        x=df["Open time"], y=df["{ind1_col}"],
-        name="{ind1_label}",
-        line=dict(color="#f59e0b", width=1.5), opacity=0.9
-    ), row=1, col=1)
-    fig.add_trace(go.Scatter(
-        x=df["Open time"], y=df["{ind2_col}"],
-        name="{ind2_label}",
-        line=dict(color="#60a5fa", width=1.5), opacity=0.9
-    ), row=1, col=1)
+    # Draw all available indicator lines automatically
+    colors = ["#f59e0b","#60a5fa","#a78bfa","#34d399","#f87171"]
+    for i, col in enumerate(ind_cols[:5]):
+        fig.add_trace(go.Scatter(
+            x=df["Open time"], y=df[col],
+            name=col, line=dict(color=colors[i % len(colors)], width=1.5),
+            opacity=0.9
+        ), row=1, col=1)
 
     # Long entry markers
     long_entries = df[df["long_signal"]]
@@ -1549,8 +1728,7 @@ def plot_results(df):
             x=long_entries["Open time"],
             y=long_entries["Close"] * 0.994,
             mode="markers", name="Long Entry",
-            marker=dict(symbol="triangle-up", size=14,
-                        color="#4ade80",
+            marker=dict(symbol="triangle-up", size=14, color="#4ade80",
                         line=dict(color="#166534", width=1))
         ), row=1, col=1)
 
@@ -1561,8 +1739,7 @@ def plot_results(df):
             x=short_entries["Open time"],
             y=short_entries["Close"] * 1.006,
             mode="markers", name="Short Entry",
-            marker=dict(symbol="triangle-down", size=14,
-                        color="#f87171",
+            marker=dict(symbol="triangle-down", size=14, color="#f87171",
                         line=dict(color="#991b1b", width=1))
         ), row=1, col=1)
 
