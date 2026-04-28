@@ -1166,7 +1166,27 @@ IMPORTANT:
             text = text.split('```json')[1].split('```')[0]
         elif '```' in text:
             text = text.split('```')[1].split('```')[0]
-        return json.loads(text.strip())
+        result = json.loads(text.strip())
+
+        # Sanitize — ensure critical numeric fields are never None
+        result['sl_pct'] = result.get('sl_pct') or 0.02
+        result['tp_pct'] = result.get('tp_pct') or 0.06
+        result['strategy_type'] = result.get('strategy_type') or 'trend'
+        result['summary']       = result.get('summary') or 'Trading Strategy'
+        result['indicators']    = result.get('indicators') or []
+        result['indicator_params'] = result.get('indicator_params') or {
+            'ema_fast': 20, 'ema_slow': 50,
+            'rsi_period': 14, 'rsi_overbought': 70, 'rsi_oversold': 30
+        }
+        # Ensure indicator_params values are never None
+        ip = result['indicator_params']
+        ip['ema_fast']       = ip.get('ema_fast')       or 20
+        ip['ema_slow']       = ip.get('ema_slow')       or 50
+        ip['rsi_period']     = ip.get('rsi_period')     or 14
+        ip['rsi_overbought'] = ip.get('rsi_overbought') or 70
+        ip['rsi_oversold']   = ip.get('rsi_oversold')   or 30
+
+        return result
     except json.JSONDecodeError:
         st.error("AI returned invalid JSON. Please rephrase your strategy.")
         return None
@@ -1264,8 +1284,8 @@ def generate_python_code(client, strategy: dict, symbol: str,
     has_long    = strategy.get('entry_long')  is not None
     has_short   = strategy.get('entry_short') is not None
     binance_sym = BINANCE_SYMBOLS.get(symbol.upper(), 'BTCUSDT')
-    sl_pct      = strategy.get('sl_pct', 0.02)
-    tp_pct      = strategy.get('tp_pct', 0.06)
+    sl_pct      = strategy.get('sl_pct') or 0.02
+    tp_pct      = strategy.get('tp_pct') or 0.06
     params      = strategy.get('indicator_params', {})
     ema_fast    = params.get('ema_fast', 20)
     ema_slow    = params.get('ema_slow', 50)
@@ -1694,8 +1714,8 @@ def generate_signals(df, strategy):
 # ─────────────────────────────────────────────────────────────
 def draw_chart(df, strategy, symbol, data_source):
     df_plot = df.tail(80).copy()
-    sl_pct  = strategy.get('sl_pct', 0.02)
-    tp_pct  = strategy.get('tp_pct', 0.06)
+    sl_pct  = strategy.get('sl_pct') or 0.02
+    tp_pct  = strategy.get('tp_pct') or 0.06
     stype   = strategy.get('strategy_type', 'trend')
     params  = strategy.get('indicator_params', {})
     ef_span = params.get('ema_fast', 20)
@@ -1954,8 +1974,8 @@ if st.session_state.parsed:
     for col, (cls, txt) in zip(st.columns(4), [
         ('tag-entry', f"📈 LONG: {str(p.get('entry_long','None'))[:32]}"),
         ('tag-entry', f"📉 SHORT: {str(p.get('entry_short','None'))[:32]}"),
-        ('tag-sl',    f"🛑 SL: {p.get('sl_pct',0.02)*100:.1f}%"),
-        ('tag-tp',    f"🎯 TP: {p.get('tp_pct',0.06)*100:.1f}%"),
+        ('tag-sl',    f"🛑 SL: {(p.get('sl_pct') or 0.02)*100:.1f}%"),
+        ('tag-tp',    f"🎯 TP: {(p.get('tp_pct') or 0.06)*100:.1f}%"),
     ]):
         with col:
             st.markdown(f'<span class="tag {cls}">{txt}</span>',
