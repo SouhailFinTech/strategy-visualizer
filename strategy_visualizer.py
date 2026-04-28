@@ -449,7 +449,91 @@ IMPORTANT:
         return None
 
 
+def generate_signal_block(client, description: str) -> str:
+    """
+    AI writes ONLY the signal lines.
+    Everything else (backtest, metrics, chart) is hardcoded by us.
+    AI is given the full indicator library so it calls functions
+    instead of writing formulas — minimizes errors dramatically.
+    """
+
+    # Import the library reference
+    try:
+        from quant_indicators import LIBRARY_REFERENCE
+    except ImportError:
+        LIBRARY_REFERENCE = "Use standard pandas/numpy indicator calculations."
+
+    prompt = f"""You are a Python quant developer.
+Your ONLY job: write the signal code for this strategy.
+
+STRATEGY: "{description}"
+
+You have access to a pre-built indicator library already imported as:
+from quant_indicators import *
+
+{LIBRARY_REFERENCE}
+
+RULES — follow every rule exactly:
+1. Call library functions to calculate indicators — do NOT write indicator formulas yourself
+2. Example: df = add_ema(df, 20) then use df['EMA_20'] — never write ewm() yourself
+3. df['long_signal'] must be a boolean pd.Series
+4. df['short_signal'] must be a boolean pd.Series
+5. If only long requested: df['short_signal'] = pd.Series(False, index=df.index)
+6. If only short requested: df['long_signal'] = pd.Series(False, index=df.index)
+7. Use crossover() / crossunder() helpers for crossovers — never write (a > b) & (a.shift(1) <= b.shift(1)) yourself
+8. End both signal lines with .fillna(False)
+9. Return ONLY Python lines — no def, no imports, no explanation, no markdown
+
+EXAMPLE OUTPUT for "buy when EMA 20 crosses EMA 50":
+df = add_ema(df, 20)
+df = add_ema(df, 50)
+df['long_signal']  = crossover(df['EMA_20'], df['EMA_50']).fillna(False)
+df['short_signal'] = pd.Series(False, index=df.index)
+
+Now write signal code for: "{description}"
+Output ONLY the Python lines."""
+
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=600,
+            temperature=0.0
+        )
+        text = response.choices[0].message.content.strip()
+        if '```python' in text:
+            text = text.split('```python')[1].split('```')[0]
+        elif '```' in text:
+            text = text.split('```')[1].split('```')[0]
+
+        # Strip all existing indentation then add exactly 4 spaces
+        lines = text.strip().splitlines()
+        # Remove import lines — library already imported in generated code
+        lines = [l for l in lines
+                 if not l.strip().startswith('import ')
+                 and not l.strip().startswith('from ')]
+        signal_block = '\n'.join(
+            '    ' + line.lstrip() if line.strip() else ''
+            for line in lines
+        )
+        return signal_block
+
+    except Exception as e:
+        # Safe fallback — no signals, won't crash
+        return (
+            "    df['long_signal']  = pd.Series(False, index=df.index)\n"
+            "    df['short_signal'] = pd.Series(False, index=df.index)\n"
+            f"    # Signal generation failed: {e}"
+        )
+
+
 def generate_python_code(client, strategy: dict, symbol: str) -> str:
+    """
+    100% hardcoded code generation — zero Groq involvement.
+    Groq only parses the strategy description into JSON (done earlier).
+    This function builds the complete backtest code from templates.
+    Result is always syntactically correct and mathematically sound.
+    """
     has_long    = strategy.get('entry_long')  is not None
     has_short   = strategy.get('entry_short') is not None
     binance_sym = BINANCE_SYMBOLS.get(symbol.upper(), 'BTCUSDT')
@@ -462,104 +546,134 @@ def generate_python_code(client, strategy: dict, symbol: str) -> str:
     rsi_ob      = params.get('rsi_overbought', 70)
     rsi_os      = params.get('rsi_oversold', 30)
     stype       = strategy.get('strategy_type', 'trend')
-    summary     = strategy.get('summary', 'EMA Strategy')
+    summary     = strategy.get('summary', 'Trading Strategy')
 
-    # Build indicator code based on strategy type
+    # ── Indicator section ─────────────────────────────────────
     if stype in ['trend', 'momentum']:
-        indicator_code = f"""
-    # Calculate EMAs
+        indicator_block = f"""\
+    # Exponential Moving Averages
     df['EMA_fast'] = df['Close'].ewm(span={ema_fast}, adjust=False).mean()
     df['EMA_slow'] = df['Close'].ewm(span={ema_slow}, adjust=False).mean()"""
-
-        long_signal_code  = f"(df['EMA_fast'] > df['EMA_slow']) & (df['EMA_fast'].shift(1) <= df['EMA_slow'].shift(1))"
-        short_signal_code = f"(df['EMA_fast'] < df['EMA_slow']) & (df['EMA_fast'].shift(1) >= df['EMA_slow'].shift(1))"
+        ind1_label = f'EMA {ema_fast}'
+        ind2_label = f'EMA {ema_slow}'
+        ind1_col   = 'EMA_fast'
+        ind2_col   = 'EMA_slow'
+        bottom_panel = 'volume'
+        long_sig  = f"(df['EMA_fast'] > df['EMA_slow']) & (df['EMA_fast'].shift(1) <= df['EMA_slow'].shift(1))"
+        short_sig = f"(df['EMA_fast'] < df['EMA_slow']) & (df['EMA_fast'].shift(1) >= df['EMA_slow'].shift(1))"
 
     elif stype == 'mean-reversion':
-        indicator_code = f"""
-    # Calculate RSI
-    delta = df['Close'].diff()
-    gain  = delta.clip(lower=0).rolling({rsi_period}).mean()
-    loss  = (-delta.clip(upper=0)).rolling({rsi_period}).mean()
-    df['RSI'] = 100 - (100 / (1 + gain / loss.replace(0, float('nan'))))"""
-
-        long_signal_code  = f"(df['RSI'] < {rsi_os}) & (df['RSI'].shift(1) >= {rsi_os})"
-        short_signal_code = f"(df['RSI'] > {rsi_ob}) & (df['RSI'].shift(1) <= {rsi_ob})"
+        indicator_block = f"""\
+    # RSI Indicator
+    delta       = df['Close'].diff()
+    gain        = delta.clip(lower=0).rolling({rsi_period}).mean()
+    loss        = (-delta.clip(upper=0)).rolling({rsi_period}).mean()
+    rs          = gain / loss.replace(0, float('nan'))
+    df['RSI']   = 100 - (100 / (1 + rs))
+    # EMAs for visual reference
+    df['EMA_fast'] = df['Close'].ewm(span=20, adjust=False).mean()
+    df['EMA_slow'] = df['Close'].ewm(span=50, adjust=False).mean()"""
+        ind1_label = 'EMA 20'
+        ind2_label = 'EMA 50'
+        ind1_col   = 'EMA_fast'
+        ind2_col   = 'EMA_slow'
+        bottom_panel = 'rsi'
+        long_sig  = f"(df['RSI'] < {rsi_os}) & (df['RSI'].shift(1) >= {rsi_os})"
+        short_sig = f"(df['RSI'] > {rsi_ob}) & (df['RSI'].shift(1) <= {rsi_ob})"
 
     else:  # breakout
-        indicator_code = f"""
-    # Calculate Bollinger Bands
+        indicator_block = f"""\
+    # Bollinger Bands
     df['BB_mid']   = df['Close'].rolling(20).mean()
-    df['BB_upper'] = df['BB_mid'] + 2 * df['Close'].rolling(20).std()
-    df['BB_lower'] = df['BB_mid'] - 2 * df['Close'].rolling(20).std()"""
+    bb_std         = df['Close'].rolling(20).std()
+    df['BB_upper'] = df['BB_mid'] + 2 * bb_std
+    df['BB_lower'] = df['BB_mid'] - 2 * bb_std
+    # EMAs for visual reference
+    df['EMA_fast'] = df['Close'].ewm(span=20, adjust=False).mean()
+    df['EMA_slow'] = df['Close'].ewm(span=50, adjust=False).mean()"""
+        ind1_label = 'BB Upper'
+        ind2_label = 'BB Lower'
+        ind1_col   = 'BB_upper'
+        ind2_col   = 'BB_lower'
+        bottom_panel = 'volume'
+        long_sig  = f"(df['Close'] > df['BB_upper']) & (df['Close'].shift(1) <= df['BB_upper'].shift(1))"
+        short_sig = f"(df['Close'] < df['BB_lower']) & (df['Close'].shift(1) >= df['BB_lower'].shift(1))"
 
-        long_signal_code  = f"(df['Close'] > df['BB_upper']) & (df['Close'].shift(1) <= df['BB_upper'].shift(1))"
-        short_signal_code = f"(df['Close'] < df['BB_lower']) & (df['Close'].shift(1) >= df['BB_lower'].shift(1))"
-
-    # Build signal block based on direction
+    # ── Signal section ────────────────────────────────────────
     if has_long and not has_short:
-        signal_block = f"""
-    # Long only — no short signals
-    df['long_signal']  = {long_signal_code}
-    df['short_signal'] = False
+        signal_block = f"""\
+    # Long only — entry when crossover detected
+    df['long_signal']  = {long_sig}
+    df['short_signal'] = pd.Series(False, index=df.index)
     df['Signal']       = df['long_signal'].astype(int)"""
     elif has_short and not has_long:
-        signal_block = f"""
-    # Short only — no long signals
-    df['long_signal']  = False
-    df['short_signal'] = {short_signal_code}
+        signal_block = f"""\
+    # Short only — entry when crossunder detected
+    df['long_signal']  = pd.Series(False, index=df.index)
+    df['short_signal'] = {short_sig}
     df['Signal']       = -df['short_signal'].astype(int)"""
     else:
-        signal_block = f"""
-    # Both long and short
-    df['long_signal']  = {long_signal_code}
-    df['short_signal'] = {short_signal_code}
+        signal_block = f"""\
+    # Long and short signals
+    df['long_signal']  = {long_sig}
+    df['short_signal'] = {short_sig}
     df['Signal']       = df['long_signal'].astype(int) - df['short_signal'].astype(int)"""
 
-    # Now ask Groq ONLY to fill in the chart section
-    # We generate the entire backtest ourselves — only chart needs customization
-    prompt = f"""Complete this Python backtesting script by writing ONLY the plot_results() function body.
-The function receives a DataFrame with these columns:
-- Open time (datetime), Open, High, Low, Close, Volume
-- EMA_fast, EMA_slow (or RSI or BB_mid/BB_upper/BB_lower depending on strategy)
-- long_signal (bool), short_signal (bool)
-- Strategy_Equity (float), BH_Equity (float)
+    # ── Bottom panel section ──────────────────────────────────
+    if bottom_panel == 'rsi':
+        bottom_block = f"""\
+    # RSI panel
+    fig.add_trace(go.Scatter(
+        x=df['Open time'], y=df['RSI'],
+        name='RSI', line=dict(color='#a78bfa', width=1.5)
+    ), row=2, col=1)
+    fig.add_hline(y={rsi_ob}, line_color='#ef4444', line_dash='dash',
+                  line_width=1, opacity=0.6, row=2, col=1)
+    fig.add_hline(y={rsi_os}, line_color='#4ade80', line_dash='dash',
+                  line_width=1, opacity=0.6, row=2, col=1)"""
+    else:
+        bottom_block = """\
+    # Volume panel
+    bar_colors = ['#26a69a' if c >= o else '#ef5350'
+                  for c, o in zip(df['Close'], df['Open'])]
+    fig.add_trace(go.Bar(
+        x=df['Open time'], y=df['Volume'],
+        name='Volume', marker_color=bar_colors, opacity=0.6
+    ), row=2, col=1)"""
 
-Strategy type: {stype}
-Summary: {summary}
-Symbol: {symbol}
+    # ── SL/TP annotation section ──────────────────────────────
+    sltp_block = f"""\
+    # Draw SL/TP lines for each long entry
+    for idx in df[df['long_signal']].index:
+        entry    = float(df.loc[idx, 'Close'])
+        sl_price = entry * (1 - {sl_pct})
+        tp_price = entry * (1 + {tp_pct})
+        t_start  = df.loc[idx, 'Open time']
+        pos      = df.index.get_loc(idx)
+        t_end    = df.iloc[min(pos + 8, len(df) - 1)]['Open time']
+        fig.add_shape(type='line', x0=t_start, x1=t_end,
+            y0=sl_price, y1=sl_price,
+            line=dict(color='#ef4444', width=1, dash='dash'), row=1, col=1)
+        fig.add_shape(type='line', x0=t_start, x1=t_end,
+            y0=tp_price, y1=tp_price,
+            line=dict(color='#4ade80', width=1, dash='dot'), row=1, col=1)
+    # Draw SL/TP lines for each short entry
+    for idx in df[df['short_signal']].index:
+        entry    = float(df.loc[idx, 'Close'])
+        sl_price = entry * (1 + {sl_pct})
+        tp_price = entry * (1 - {tp_pct})
+        t_start  = df.loc[idx, 'Open time']
+        pos      = df.index.get_loc(idx)
+        t_end    = df.iloc[min(pos + 8, len(df) - 1)]['Open time']
+        fig.add_shape(type='line', x0=t_start, x1=t_end,
+            y0=sl_price, y1=sl_price,
+            line=dict(color='#ef4444', width=1, dash='dash'), row=1, col=1)
+        fig.add_shape(type='line', x0=t_start, x1=t_end,
+            y0=tp_price, y1=tp_price,
+            line=dict(color='#4ade80', width=1, dash='dot'), row=1, col=1)"""
 
-Write the function body that:
-1. Creates a plotly make_subplots(rows=2) figure with dark theme
-2. Row 1: candlesticks + indicators + green triangle-up markers where long_signal==True + red triangle-down where short_signal==True
-3. Row 2: Strategy_Equity line (green) + BH_Equity line (gray dashed)
-4. paper_bgcolor='#080a0f', plot_bgcolor='#0d0f14'
-5. Returns the fig object
-
-Write ONLY the function body lines (no def line, no imports). Use 4-space indent."""
-
-    try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1500, temperature=0.1
-        )
-        chart_body = response.choices[0].message.content.strip()
-        if '```python' in chart_body:
-            chart_body = chart_body.split('```python')[1].split('```')[0]
-        elif '```' in chart_body:
-            chart_body = chart_body.split('```')[1].split('```')[0]
-
-        # Indent chart body properly
-        chart_lines = '\n'.join(
-            '    ' + line if line.strip() else line
-            for line in chart_body.strip().splitlines()
-        )
-
-    except Exception as e:
-        chart_lines = f"    fig = go.Figure()\n    return fig  # chart error: {e}"
-
-    # Build the complete script ourselves — no LLM involved in critical math
-    code = f"""import requests
+    # ── Full code template ────────────────────────────────────
+    code = f'''import requests
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -569,74 +683,162 @@ from plotly.subplots import make_subplots
 def fetch_data():
     try:
         resp = requests.get(
-            'https://api.binance.com/api/v3/klines',
-            params={{'symbol': '{binance_sym}', 'interval': '1d', 'limit': 365}}
+            "https://api.binance.com/api/v3/klines",
+            params={{"symbol": "{binance_sym}", "interval": "1d", "limit": 365}}
         )
         resp.raise_for_status()
         raw = resp.json()
-        df = pd.DataFrame(raw, columns=[
-            'Open time','Open','High','Low','Close','Volume',
-            'ct','qv','nt','tbb','tbq','ignore'
+        df  = pd.DataFrame(raw, columns=[
+            "Open time", "Open", "High", "Low", "Close", "Volume",
+            "ct", "qv", "nt", "tbb", "tbq", "ignore"
         ])
-        df['Open time'] = pd.to_datetime(df['Open time'], unit='ms')
-        for col in ['Open','High','Low','Close','Volume']:
+        df["Open time"] = pd.to_datetime(df["Open time"], unit="ms")
+        for col in ["Open", "High", "Low", "Close", "Volume"]:
             df[col] = pd.to_numeric(df[col])
-        df = df.drop(columns=['ct','qv','nt','tbb','tbq','ignore'])
+        df = df.drop(columns=["ct", "qv", "nt", "tbb", "tbq", "ignore"])
         return df
     except Exception as e:
         print(f"Data error: {{e}}")
         return None
 
+
 # ── Add indicators ────────────────────────────────────────────
 def add_indicators(df):
-    {indicator_code.strip()}
+{indicator_block}
     return df
+
 
 # ── Generate signals ──────────────────────────────────────────
 def generate_signals(df):
-    {signal_block.strip()}
-    # Shift signal by 1 bar to avoid lookahead bias
-    df['Position'] = df['Signal'].shift(1).fillna(0)
+{signal_block}
+    # Shift by 1 bar — prevents lookahead bias
+    df["Position"] = df["Signal"].shift(1).fillna(0)
     return df
 
-# ── Backtest — returns and equity ─────────────────────────────
-def backtest(df):
-    # Daily returns
-    df['Return'] = df['Close'].pct_change()
 
-    # Commission: 0.1% only when position changes
-    df['Commission'] = np.where(
-        df['Position'] != df['Position'].shift(1), 0.001, 0
+# ── Backtest ──────────────────────────────────────────────────
+def backtest(df):
+    # Daily close-to-close returns
+    df["Return"] = df["Close"].pct_change()
+
+    # Commission 0.1% only when position changes (entry/exit)
+    df["Commission"] = np.where(
+        df["Position"] != df["Position"].shift(1), 0.001, 0
     )
 
-    # Strategy return = return × position − commission
-    df['Strategy_Return'] = df['Return'] * df['Position'] - df['Commission']
+    # Strategy daily return = market return × position − commission
+    df["Strategy_Return"] = df["Return"] * df["Position"] - df["Commission"]
 
-    # Equity curves (start at 1.0)
-    df['BH_Equity']       = (1 + df['Return']).cumprod()
-    df['Strategy_Equity'] = (1 + df['Strategy_Return']).cumprod()
+    # Cumulative equity curves starting at 1.0
+    df["BH_Equity"]       = (1 + df["Return"]).cumprod()
+    df["Strategy_Equity"] = (1 + df["Strategy_Return"]).cumprod()
 
     return df
+
 
 # ── Performance metrics ───────────────────────────────────────
 def metrics(df):
-    r        = df['Strategy_Return'].dropna()
+    r        = df["Strategy_Return"].dropna()
     sharpe   = r.mean() / r.std() * np.sqrt(252) if r.std() > 0 else 0
-    roll_max = df['Strategy_Equity'].cummax()
-    max_dd   = ((df['Strategy_Equity'] - roll_max) / roll_max).min()
+    roll_max = df["Strategy_Equity"].cummax()
+    max_dd   = ((df["Strategy_Equity"] - roll_max) / roll_max).min()
     win_rate = (r > 0).mean()
-    total_r  = df['Strategy_Equity'].iloc[-1] - 1
-    n_trades = int((df['Position'] != df['Position'].shift(1)).sum() / 2)
+    total_r  = df["Strategy_Equity"].iloc[-1] - 1
+    n_trades = int((df["Position"] != df["Position"].shift(1)).sum() / 2)
     return sharpe, max_dd, win_rate, total_r, n_trades
+
 
 # ── Chart ─────────────────────────────────────────────────────
 def plot_results(df):
-{chart_lines}
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True,
+        vertical_spacing=0.05, row_heights=[0.70, 0.30]
+    )
+
+    # Candlesticks
+    fig.add_trace(go.Candlestick(
+        x=df["Open time"],
+        open=df["Open"], high=df["High"],
+        low=df["Low"],   close=df["Close"],
+        name="Price",
+        increasing_line_color="#26a69a",
+        decreasing_line_color="#ef5350",
+        increasing_fillcolor="#26a69a",
+        decreasing_fillcolor="#ef5350",
+    ), row=1, col=1)
+
+    # Indicator lines
+    fig.add_trace(go.Scatter(
+        x=df["Open time"], y=df["{ind1_col}"],
+        name="{ind1_label}",
+        line=dict(color="#f59e0b", width=1.5), opacity=0.9
+    ), row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=df["Open time"], y=df["{ind2_col}"],
+        name="{ind2_label}",
+        line=dict(color="#60a5fa", width=1.5), opacity=0.9
+    ), row=1, col=1)
+
+    # Long entry markers
+    long_entries = df[df["long_signal"]]
+    if not long_entries.empty:
+        fig.add_trace(go.Scatter(
+            x=long_entries["Open time"],
+            y=long_entries["Close"] * 0.994,
+            mode="markers", name="Long Entry",
+            marker=dict(symbol="triangle-up", size=14,
+                        color="#4ade80",
+                        line=dict(color="#166534", width=1))
+        ), row=1, col=1)
+
+    # Short entry markers
+    short_entries = df[df["short_signal"]]
+    if not short_entries.empty:
+        fig.add_trace(go.Scatter(
+            x=short_entries["Open time"],
+            y=short_entries["Close"] * 1.006,
+            mode="markers", name="Short Entry",
+            marker=dict(symbol="triangle-down", size=14,
+                        color="#f87171",
+                        line=dict(color="#991b1b", width=1))
+        ), row=1, col=1)
+
+{sltp_block}
+
+{bottom_block}
+
+    # Equity curves
+    fig.add_trace(go.Scatter(
+        x=df["Open time"], y=df["Strategy_Equity"],
+        name="Strategy", line=dict(color="#4ade80", width=2)
+    ), row=2, col=1)
+    fig.add_trace(go.Scatter(
+        x=df["Open time"], y=df["BH_Equity"],
+        name="Buy & Hold", line=dict(color="#64748b", width=1.5, dash="dash")
+    ), row=2, col=1)
+
+    fig.update_layout(
+        height=700,
+        paper_bgcolor="#080a0f",
+        plot_bgcolor="#0d0f14",
+        font=dict(family="monospace", color="#a89060", size=11),
+        legend=dict(bgcolor="#0d0f14", bordercolor="#1e2030", borderwidth=1),
+        xaxis_rangeslider_visible=False,
+        title=dict(
+            text="<b>{symbol}</b> — {summary}",
+            font=dict(color="#f59e0b", size=14), x=0.01
+        )
+    )
+    fig.update_xaxes(gridcolor="#1e2030", zerolinecolor="#1e2030")
+    fig.update_yaxes(gridcolor="#1e2030", zerolinecolor="#1e2030")
+    return fig
+
 
 # ── Main ──────────────────────────────────────────────────────
 def main():
     df = fetch_data()
     if df is None:
+        print("Failed to fetch data.")
         return
 
     df = add_indicators(df)
@@ -645,22 +847,23 @@ def main():
 
     sharpe, max_dd, win_rate, total_r, n_trades = metrics(df)
 
-    print("=" * 45)
+    print("=" * 48)
     print(f"  {symbol} — {summary}")
-    print("=" * 45)
+    print("=" * 48)
     print(f"  Sharpe Ratio : {{sharpe:.2f}}")
     print(f"  Max Drawdown : {{max_dd:.1%}}")
     print(f"  Win Rate     : {{win_rate:.1%}}")
     print(f"  Total Return : {{total_r:.1%}}")
     print(f"  Trades       : {{n_trades}}")
-    print("=" * 45)
+    print("=" * 48)
 
     fig = plot_results(df)
     fig.show()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
-"""
+'''
     return code
 
 # ─────────────────────────────────────────────────────────────
