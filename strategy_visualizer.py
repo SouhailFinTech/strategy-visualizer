@@ -1196,21 +1196,186 @@ IMPORTANT:
 
 
 def detect_advanced_features(description: str) -> dict:
-    """
-    Detect advanced features mentioned by user that need
-    special handling in the backtest loop.
-    """
-    desc_lower = description.lower()
+    """Detect direction and advanced features from description"""
+    d = description.lower()
     return {
-        'has_partial_close': any(w in desc_lower for w in
-            ['partial', 'partial close', 'scale out', '30%', '50%', 'portion']),
-        'has_trailing_stop': any(w in desc_lower for w in
-            ['trail', 'trailing', 'trailing stop', 'trail stop']),
-        'has_both_directions': any(w in desc_lower for w in
-            ['short', 'sell', 'both', 'long and short']),
-        'has_long': any(w in desc_lower for w in
-            ['buy', 'long', 'bullish', 'above']),
+        'has_partial_close':  any(w in d for w in ['partial', 'scale out', 'partial close']),
+        'has_trailing_stop':  any(w in d for w in ['trail', 'trailing']),
+        'has_both_directions':any(w in d for w in ['short', 'sell when', 'both']),
+        'has_long':           any(w in d for w in ['buy', 'long', 'bullish']),
     }
+
+
+def generate_signal_block(client, description: str, strategy: dict) -> str:
+    """
+    GROQ'S ONLY JOB: translate plain English → signal lines.
+    Everything else is hardcoded by us.
+
+    THE FIX vs previous versions:
+    - No static EMA 20/50 example — that was why Groq kept outputting EMA 20/50
+    - Dynamic prompt built from actual strategy type Groq already parsed
+    - Auto-repair layer catches any remaining mistakes
+    - Groq gets told WHAT indicators the strategy needs (from parse step)
+    """
+    features    = detect_advanced_features(description)
+    has_long    = features['has_long'] or not features['has_both_directions']
+    has_short   = features['has_both_directions']
+    stype       = strategy.get('strategy_type', 'trend')
+    indicators  = strategy.get('indicators', [])
+    params      = strategy.get('indicator_params', {}) or {}
+
+    # Build direction rule
+    if has_long and has_short:
+        direction = "BOTH long AND short"
+        signal_template = """\
+df['long_signal']  = <YOUR_LONG_CONDITION>.fillna(False)
+df['short_signal'] = <YOUR_SHORT_CONDITION>.fillna(False)
+df['Signal']       = df['long_signal'].astype(int) - df['short_signal'].astype(int)"""
+    elif has_short:
+        direction = "SHORT only"
+        signal_template = """\
+df['long_signal']  = pd.Series(False, index=df.index)
+df['short_signal'] = <YOUR_SHORT_CONDITION>.fillna(False)
+df['Signal']       = -df['short_signal'].astype(int)"""
+    else:
+        direction = "LONG only"
+        signal_template = """\
+df['long_signal']  = <YOUR_LONG_CONDITION>.fillna(False)
+df['short_signal'] = pd.Series(False, index=df.index)
+df['Signal']       = df['long_signal'].astype(int)"""
+
+    # Build hint about what indicators the strategy uses
+    ind_hint = f"Strategy type: {stype}\nIndicators mentioned: {', '.join(indicators) if indicators else 'detect from description'}"
+    if params.get('ema_fast'): ind_hint += f"\nEMA fast period: {params['ema_fast']}"
+    if params.get('ema_slow'): ind_hint += f"\nEMA slow period: {params['ema_slow']}"
+    if params.get('rsi_period'): ind_hint += f"\nRSI period: {params['rsi_period']}"
+
+    prompt = f"""You are a Python quant developer.
+Translate this trading strategy into Python signal detection code.
+
+STRATEGY: "{description}"
+DIRECTION: {direction}
+{ind_hint}
+
+AVAILABLE FUNCTIONS (pre-built library — call these, never write formulas):
+
+INDICATORS (call to add columns to df):
+add_ema(df, period)        → df['EMA_20'], df['EMA_50'], etc.
+add_sma(df, period)        → df['SMA_20']
+add_rsi(df, period)        → df['RSI_14']
+add_macd(df, 12, 26, 9)    → df['MACD'], df['MACD_Signal'], df['MACD_Hist']
+add_bollinger(df, 20, 2.0) → df['BB_Upper'], df['BB_Lower'], df['BB_Mid']
+add_atr(df, 14)            → df['ATR_14']
+add_stochastic(df, 14, 3)  → df['Stoch_K'], df['Stoch_D']
+add_vwap(df)               → df['VWAP']
+add_obv(df)                → df['OBV']
+add_volume_spike(df, 20, 2)→ df['Volume_Spike']
+
+PRICE ACTION / SMC / ICT:
+add_swing_highs_lows(df, 5)    → df['Swing_High'], df['Swing_Low']
+add_candle_patterns(df)        → df['Bullish_Engulfing'], df['Bearish_Engulfing'], df['Hammer'], df['Shooting_Star'], df['Bullish_Pin_Bar'], df['Bearish_Pin_Bar'], df['Doji']
+add_structure_break(df, 10)    → df['BOS_Bullish'], df['BOS_Bearish'], df['CHoCH_Bullish'], df['CHoCH_Bearish']
+add_fair_value_gaps(df)        → df['FVG_Bullish'], df['FVG_Bearish']
+add_liquidity_levels(df, 20)   → df['BSL_Sweep'], df['SSL_Sweep'], df['BSL'], df['SSL']
+add_order_blocks(df, 10)       → df['Bullish_OB'], df['Bearish_OB']
+add_premium_discount(df, 50)   → df['In_Premium'], df['In_Discount']
+add_market_structure(df, 10)   → df['Bullish_Structure'], df['Bearish_Structure']
+add_optimal_trade_entry(df)    → df['In_OTE_Bullish'], df['In_OTE_Bearish']
+add_equal_highs_lows(df)       → df['EQH'], df['EQL']
+add_higher_highs_lower_lows(df)→ df['HH'], df['HL'], df['LH'], df['LL']
+add_support_resistance(df, 20) → df['Resistance_20'], df['Support_20']
+add_previous_day_levels(df)    → df['PDH'], df['PDL'], df['PDC']
+
+SIGNAL HELPERS (return boolean Series):
+crossover(series_a, series_b)  → True when a crosses above b
+crossunder(series_a, series_b) → True when a crosses below b
+above_level(series, value)     → True when series crosses above fixed level
+below_level(series, value)     → True when series crosses below fixed level
+rising(series, periods)        → True when series is rising
+falling(series, periods)       → True when series is falling
+
+MANDATORY OUTPUT FORMAT — follow exactly:
+{signal_template}
+
+RULES:
+1. First call add_*() functions for every indicator you need
+2. Then write the signal conditions using library helpers
+3. df['Signal'] MUST always be the last line
+4. Both long_signal and short_signal MUST be assigned
+5. Output ONLY Python lines — no imports, no def, no markdown, no comments
+
+OUTPUT ONLY THE PYTHON LINES NOW:"""
+
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=800,
+            temperature=0.0
+        )
+        text = response.choices[0].message.content.strip()
+        if '```python' in text:
+            text = text.split('```python')[1].split('```')[0]
+        elif '```' in text:
+            text = text.split('```')[1].split('```')[0]
+
+        lines = [l for l in text.strip().splitlines()
+                 if not l.strip().startswith('import ')
+                 and not l.strip().startswith('from ')
+                 and l.strip() != '']
+
+        joined = '\n'.join(lines)
+
+        # ── AUTO-REPAIR: fix Groq mistakes ───────────────────
+        # Repair 1: Signal missing
+        if "df['Signal']" not in joined and 'df["Signal"]' not in joined:
+            if has_long and has_short:
+                lines.append("df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)")
+            elif has_short:
+                lines.append("df['Signal'] = -df['short_signal'].astype(int)")
+            else:
+                lines.append("df['Signal'] = df['long_signal'].astype(int)")
+
+        # Repair 2: long_signal missing
+        if "long_signal" not in joined:
+            lines.insert(0, "df['long_signal'] = pd.Series(False, index=df.index)")
+
+        # Repair 3: short_signal missing
+        if "short_signal" not in joined:
+            lines.insert(0, "df['short_signal'] = pd.Series(False, index=df.index)")
+
+        # Repair 4: fillna missing on boolean signals
+        repaired = []
+        for line in lines:
+            if (("long_signal']  =" in line or "long_signal'] =" in line) and
+                    'fillna' not in line and 'pd.Series' not in line and 'astype' not in line):
+                line = line.rstrip() + '.fillna(False)'
+            if (("short_signal']  =" in line or "short_signal'] =" in line) and
+                    'fillna' not in line and 'pd.Series' not in line and 'astype' not in line):
+                line = line.rstrip() + '.fillna(False)'
+            repaired.append(line)
+        lines = repaired
+
+        # Indent 4 spaces
+        return '\n'.join(
+            '    ' + line.lstrip() if line.strip() else ''
+            for line in lines
+        )
+
+    except Exception as e:
+        # Safe fallback
+        if has_long and has_short:
+            sig = "    df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)"
+        elif has_short:
+            sig = "    df['Signal'] = -df['short_signal'].astype(int)"
+        else:
+            sig = "    df['Signal'] = df['long_signal'].astype(int)"
+        return (
+            "    df['long_signal']  = pd.Series(False, index=df.index)\n"
+            "    df['short_signal'] = pd.Series(False, index=df.index)\n"
+            f"{sig}\n"
+            f"    # Signal generation failed: {e}"
+        )
 
 
 def generate_signal_block(client, description: str) -> str:
@@ -1462,7 +1627,7 @@ def generate_python_code(client, strategy: dict, symbol: str,
     # If description provided — use AI with indicator library
     # Otherwise — use hardcoded template
     if description and client:
-        signal_block = generate_signal_block(client, description)
+        signal_block = generate_signal_block(client, description, strategy)
     elif has_long and not has_short:
         signal_block = f"""\
     # Long only
@@ -1889,7 +2054,7 @@ def generate_signals(df, strategy):
 # ─────────────────────────────────────────────────────────────
 # PLOTLY CHART
 # ─────────────────────────────────────────────────────────────
-def draw_chart(df, strategy, symbol, data_source):
+def draw_chart(df, strategy, symbol, data_source, show='both'):
     df_plot = df.tail(80).copy()
     sl_pct  = strategy.get('sl_pct') or 0.02
     tp_pct  = strategy.get('tp_pct') or 0.06
@@ -1937,8 +2102,8 @@ def draw_chart(df, strategy, symbol, data_source):
             fill='tonexty', fillcolor='rgba(245,158,11,0.05)', opacity=0.6
         ), row=1, col=1)
 
-    # ── Long signals ──────────────────────────────────────────
-    long_df = df_plot[df_plot['long_signal']]
+    # ── Long signals (shown in long chart and both chart) ────────
+    long_df = df_plot[df_plot['long_signal']] if show in ('long', 'both') else df_plot.iloc[0:0]
     if not long_df.empty:
         fig.add_trace(go.Scatter(
             x=long_df.index, y=long_df['Close'] * 0.994,
@@ -1970,8 +2135,8 @@ def draw_chart(df, strategy, symbol, data_source):
                 font=dict(color='#4ade80', size=9),
                 xanchor='left', row=1, col=1)
 
-    # ── Short signals ─────────────────────────────────────────
-    short_df = df_plot[df_plot['short_signal']]
+    # ── Short signals (shown in short chart and both chart) ───────
+    short_df = df_plot[df_plot['short_signal']] if show in ('short', 'both') else df_plot.iloc[0:0]
     if not short_df.empty:
         fig.add_trace(go.Scatter(
             x=short_df.index, y=short_df['Close'] * 1.006,
@@ -2148,15 +2313,32 @@ if st.session_state.parsed:
     <b>Indicators:</b> {', '.join(p.get('indicators',[]))}
     </div>""", unsafe_allow_html=True)
 
+    # Show direction tags
+    sl_display = (p.get('sl_pct') or 0.01) * 100
+    tp_display = (p.get('tp_pct') or 0.02) * 100
+    sl_default = p.get('sl_pct') is None
+    tp_default = p.get('tp_pct') is None
+
     for col, (cls, txt) in zip(st.columns(4), [
-        ('tag-entry', f"📈 LONG: {str(p.get('entry_long','None'))[:32]}"),
-        ('tag-entry', f"📉 SHORT: {str(p.get('entry_short','None'))[:32]}"),
-        ('tag-sl',    f"🛑 SL: {(p.get('sl_pct') or 0.02)*100:.1f}%"),
-        ('tag-tp',    f"🎯 TP: {(p.get('tp_pct') or 0.06)*100:.1f}%"),
+        ('tag-entry', f"📈 LONG: {str(p.get('entry_long','—'))[:32]}"),
+        ('tag-entry', f"📉 SHORT: {str(p.get('entry_short','—'))[:32]}"),
+        ('tag-sl',    f"🛑 SL: {sl_display:.1f}%{'  (default)' if sl_default else ''}"),
+        ('tag-tp',    f"🎯 TP: {tp_display:.1f}%{'  (default)' if tp_default else ''}"),
     ]):
         with col:
             st.markdown(f'<span class="tag {cls}">{txt}</span>',
                        unsafe_allow_html=True)
+
+    # Default SL/TP notification
+    if sl_default or tp_default:
+        st.markdown("""
+        <div style='background:#1c1400;border:1px solid #f59e0b;border-radius:8px;
+        padding:12px 16px;margin:10px 0;font-family:IBM Plex Mono;font-size:0.78rem;color:#f59e0b'>
+        ⚠️ <b>DEFAULT RISK APPLIED:</b> SL 1% · TP 2%<br>
+        <span style='color:#6b5b3a'>You didn't specify SL/TP.
+        To change them, re-describe your strategy and include
+        e.g. "stop loss 2%, take profit 6%"</span>
+        </div>""", unsafe_allow_html=True)
 
     st.markdown("")
     if st.button("📊 VISUALIZE ON REAL CANDLES", use_container_width=True):
@@ -2167,39 +2349,54 @@ if st.session_state.parsed:
             st.markdown(f"""<div class="data-source-box">
             ✅ {len(df)} candles from {source}</div>""",
                        unsafe_allow_html=True)
-            with st.spinner("🎨 Building chart..."):
-                df = add_indicators(df, p.get('indicator_params',{}))
+            with st.spinner("🎨 Building charts..."):
+                df = add_indicators(df, p.get('indicator_params', {}))
                 df = generate_signals(df, p)
                 st.session_state.df          = df
                 st.session_state.data_source = source
-                st.session_state.fig         = draw_chart(df, p, symbol, source)
+                # Build two separate figures
+                st.session_state.fig_long  = draw_chart(
+                    df, p, symbol, source, show='long')
+                st.session_state.fig_short = draw_chart(
+                    df, p, symbol, source, show='short')
         else:
             st.error(
                 "Could not fetch data from any source.\n\n"
                 "**Solution:** Upload a CSV file in the sidebar.\n"
-                "Format: Date, Open, High, Low, Close columns.\n"
-                "Download from Binance, TradingView, or any exchange."
+                "Format: Date, Open, High, Low, Close columns."
             )
 
 # ── STEP 3 ────────────────────────────────────────────────────
-if st.session_state.fig:
-    st.markdown('<div class="section-hdr">STEP 3 — IS THIS YOUR SETUP?</div>',
+if st.session_state.get('fig_long') or st.session_state.get('fig_short'):
+    st.markdown('<div class="section-hdr">STEP 3 — YOUR SETUP — LONG & SHORT</div>',
                 unsafe_allow_html=True)
-    st.plotly_chart(
-        st.session_state.fig, use_container_width=True,
-        config={
-            'displayModeBar': True, 'scrollZoom': True,
-            'toImageButtonOptions': {
-                'format': 'png',
-                'filename': f'{symbol}_strategy', 'scale': 2
-            }
-        }
-    )
+
+    # Always show BOTH charts
+    col_l, col_r = st.columns(2)
+
+    with col_l:
+        st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.75rem;
+        color:#4ade80;letter-spacing:2px;margin-bottom:8px'>
+        📈 LONG SETUP</div>""", unsafe_allow_html=True)
+        if st.session_state.get('fig_long'):
+            st.plotly_chart(st.session_state.fig_long,
+                           use_container_width=True,
+                           config={'displayModeBar': True, 'scrollZoom': True})
+
+    with col_r:
+        st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.75rem;
+        color:#f87171;letter-spacing:2px;margin-bottom:8px'>
+        📉 SHORT SETUP</div>""", unsafe_allow_html=True)
+        if st.session_state.get('fig_short'):
+            st.plotly_chart(st.session_state.fig_short,
+                           use_container_width=True,
+                           config={'displayModeBar': True, 'scrollZoom': True})
+
     st.markdown("""<div style='text-align:center;font-family:IBM Plex Mono;
-    font-size:0.82rem;color:#a89060;margin:12px 0'>
-    🔺 Green = Long entries &nbsp;|&nbsp; 🔻 Red = Short entries<br>
-    Dashed = SL &nbsp;|&nbsp; Dotted = TP &nbsp;|&nbsp;
-    🖱️ Scroll to zoom · Drag to pan
+    font-size:0.78rem;color:#a89060;margin:12px 0'>
+    🔺 Green triangles = Long entries &nbsp;|&nbsp;
+    🔻 Red triangles = Short entries<br>
+    Dashed = Stop Loss &nbsp;|&nbsp; Dotted = Take Profit
     </div>""", unsafe_allow_html=True)
 
     cy, cn = st.columns(2)
@@ -2207,8 +2404,9 @@ if st.session_state.fig:
     with cn: no_btn  = st.button("❌ NO — Redescribe",            use_container_width=True)
 
     if no_btn:
-        st.session_state.fig  = None
-        st.session_state.code = None
+        st.session_state.fig_long  = None
+        st.session_state.fig_short = None
+        st.session_state.code      = None
         st.info("Refine your description in Step 1.")
 
     if yes_btn:
