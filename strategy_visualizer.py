@@ -1640,56 +1640,99 @@ def add_indicators(df, params):
 
 
 # ─────────────────────────────────────────────────────────────
-# SIGNALS — FIXED: respects entry_long/entry_short null values
+# APP SIGNAL RUNNER
+# Executes the same Groq-generated signal block that goes into
+# the downloaded code — chart shows exactly what client gets
 # ─────────────────────────────────────────────────────────────
-def generate_signals(df, strategy):
-    df    = df.copy()
-    p     = strategy.get('indicator_params', {})
-    stype = strategy.get('strategy_type', 'trend')
-    rob   = p.get('rsi_overbought', 70)
-    ros   = p.get('rsi_oversold', 30)
+def generate_signals(df, strategy, client=None, description=''):
+    """
+    Run Groq signal block on the dataframe for the app chart.
+    Same code as the downloaded backtest — what you see = what you get.
+    """
+    df = df.copy()
 
-    # ✅ FIX: only generate signals for what user actually requested
-    wants_long  = strategy.get('entry_long')  is not None
-    wants_short = strategy.get('entry_short') is not None
-
-    # Always initialize as proper boolean Series — never scalar
+    # Initialize safe defaults
     df['long_signal']  = pd.Series(False, index=df.index)
     df['short_signal'] = pd.Series(False, index=df.index)
+    df['Signal']       = pd.Series(0, index=df.index)
 
-    if stype in ['trend', 'momentum']:
-        if wants_long:
-            df['long_signal'] = (
-                (df['EMA_fast'] > df['EMA_slow']) &
-                (df['EMA_fast'].shift(1) <= df['EMA_slow'].shift(1))
-            ).fillna(False)
-        if wants_short:
-            df['short_signal'] = (
-                (df['EMA_fast'] < df['EMA_slow']) &
-                (df['EMA_fast'].shift(1) >= df['EMA_slow'].shift(1))
-            ).fillna(False)
+    if not client or not description:
+        # Fallback: basic signal from parsed strategy
+        p     = strategy.get('indicator_params', {}) or {}
+        stype = strategy.get('strategy_type', 'trend')
+        wants_long  = strategy.get('entry_long')  is not None
+        wants_short = strategy.get('entry_short') is not None
 
-    elif stype == 'mean-reversion':
-        if wants_long:
-            df['long_signal'] = (
-                (df['RSI'] < ros) & (df['RSI'].shift(1) >= ros)
-            ).fillna(False)
-        if wants_short:
-            df['short_signal'] = (
-                (df['RSI'] > rob) & (df['RSI'].shift(1) <= rob)
-            ).fillna(False)
+        if 'EMA_fast' in df.columns and 'EMA_slow' in df.columns:
+            if wants_long:
+                df['long_signal'] = (
+                    (df['EMA_fast'] > df['EMA_slow']) &
+                    (df['EMA_fast'].shift(1) <= df['EMA_slow'].shift(1))
+                ).fillna(False)
+            if wants_short:
+                df['short_signal'] = (
+                    (df['EMA_fast'] < df['EMA_slow']) &
+                    (df['EMA_fast'].shift(1) >= df['EMA_slow'].shift(1))
+                ).fillna(False)
+        df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)
+        return df
 
-    elif stype == 'breakout':
-        if wants_long:
-            df['long_signal'] = (
-                (df['Close'] > df['BB_upper']) &
-                (df['Close'].shift(1) <= df['BB_upper'].shift(1))
-            ).fillna(False)
-        if wants_short:
-            df['short_signal'] = (
-                (df['Close'] < df['BB_lower']) &
-                (df['Close'].shift(1) >= df['BB_lower'].shift(1))
-            ).fillna(False)
+    # Get Groq signal block
+    signal_block = generate_signal_block(client, description, strategy)
+
+    # Execute signal block in dataframe context
+    # Library functions are in global scope — available here
+    try:
+        exec_globals = {
+            'df': df, 'pd': pd, 'np': np,
+            # inject all library functions
+            'add_ema': add_ema, 'add_sma': add_sma,
+            'add_rsi': add_rsi, 'add_macd': add_macd,
+            'add_bollinger': add_bollinger, 'add_atr': add_atr,
+            'add_stochastic': add_stochastic, 'add_vwap': add_vwap,
+            'add_obv': add_obv, 'add_volume_spike': add_volume_spike,
+            'add_volume_sma': add_volume_sma, 'add_wma': add_wma,
+            'add_swing_highs_lows': add_swing_highs_lows,
+            'add_candle_patterns': add_candle_patterns,
+            'add_structure_break': add_structure_break,
+            'add_fair_value_gaps': add_fair_value_gaps,
+            'add_liquidity_levels': add_liquidity_levels,
+            'add_order_blocks': add_order_blocks,
+            'add_premium_discount': add_premium_discount,
+            'add_market_structure': add_market_structure,
+            'add_optimal_trade_entry': add_optimal_trade_entry,
+            'add_equal_highs_lows': add_equal_highs_lows,
+            'add_higher_highs_lower_lows': add_higher_highs_lower_lows,
+            'add_support_resistance': add_support_resistance,
+            'add_previous_day_levels': add_previous_day_levels,
+            'add_supertrend': add_supertrend, 'add_cci': add_cci,
+            'add_williams_r': add_williams_r, 'add_mfi': add_mfi,
+            'add_donchian': add_donchian, 'add_keltner': add_keltner,
+            'add_inside_outside_bars': add_inside_outside_bars,
+            'add_common_indicators': add_common_indicators,
+            'add_smc_indicators': add_smc_indicators,
+            'crossover': crossover, 'crossunder': crossunder,
+            'above_level': above_level, 'below_level': below_level,
+            'rising': rising, 'falling': falling,
+        }
+        # Remove 4-space indent from signal block for exec
+        clean_block = '\n'.join(
+            line[4:] if line.startswith('    ') else line
+            for line in signal_block.splitlines()
+        )
+        exec(clean_block, exec_globals)
+        df = exec_globals['df']
+
+        # Ensure proper types
+        if 'long_signal' in df.columns:
+            df['long_signal'] = df['long_signal'].fillna(False).astype(bool)
+        if 'short_signal' in df.columns:
+            df['short_signal'] = df['short_signal'].fillna(False).astype(bool)
+        if 'Signal' not in df.columns:
+            df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)
+
+    except Exception as e:
+        st.warning(f"Signal execution error: {e}. Using empty signals.")
 
     return df
 
@@ -1720,29 +1763,36 @@ def draw_chart(df, strategy, symbol, data_source, show='both'):
         increasing_fillcolor='#26a69a', decreasing_fillcolor='#ef5350',
     ), row=1, col=1)
 
-    # EMAs
-    fig.add_trace(go.Scatter(
-        x=df_plot.index, y=df_plot['EMA_fast'],
-        name=f'EMA {ef_span}',
-        line=dict(color='#f59e0b', width=1.5), opacity=0.9
-    ), row=1, col=1)
-    fig.add_trace(go.Scatter(
-        x=df_plot.index, y=df_plot['EMA_slow'],
-        name=f'EMA {es_span}',
-        line=dict(color='#60a5fa', width=1.5), opacity=0.9
-    ), row=1, col=1)
+    # ── Auto-detect indicator columns — draw whatever Groq calculated ──
+    ind_prefixes = ['EMA_','SMA_','BB_','RSI_','MACD','Stoch','ATR_','WMA_','VWAP',
+                    'KC_','DC_','Supertrend']
+    ind_cols = [c for c in df_plot.columns
+                if any(c.startswith(p) for p in ind_prefixes)
+                and c not in ['BB_Pct','BB_Width']]
+    colors_ind = ['#f59e0b','#60a5fa','#a78bfa','#34d399','#f472b6','#fb923c']
+    for i, col in enumerate(ind_cols[:6]):
+        if col in df_plot.columns and not df_plot[col].isna().all():
+            # BB bands get fill
+            if col == 'BB_Upper' and 'BB_Lower' in df_plot.columns:
+                fig.add_trace(go.Scatter(
+                    x=df_plot.index, y=df_plot['BB_Upper'], name='BB Upper',
+                    line=dict(color='#f59e0b', width=1, dash='dash'), opacity=0.6
+                ), row=1, col=1)
+                fig.add_trace(go.Scatter(
+                    x=df_plot.index, y=df_plot['BB_Lower'], name='BB Lower',
+                    line=dict(color='#f59e0b', width=1, dash='dash'),
+                    fill='tonexty', fillcolor='rgba(245,158,11,0.05)', opacity=0.6
+                ), row=1, col=1)
+            elif col not in ['BB_Lower','BB_Mid']:
+                fig.add_trace(go.Scatter(
+                    x=df_plot.index, y=df_plot[col], name=col,
+                    line=dict(color=colors_ind[i % len(colors_ind)], width=1.5),
+                    opacity=0.9
+                ), row=1, col=1)
 
-    # Bollinger Bands
-    if stype == 'breakout':
-        fig.add_trace(go.Scatter(
-            x=df_plot.index, y=df_plot['BB_upper'], name='BB Upper',
-            line=dict(color='#f59e0b', width=1, dash='dash'), opacity=0.6
-        ), row=1, col=1)
-        fig.add_trace(go.Scatter(
-            x=df_plot.index, y=df_plot['BB_lower'], name='BB Lower',
-            line=dict(color='#f59e0b', width=1, dash='dash'),
-            fill='tonexty', fillcolor='rgba(245,158,11,0.05)', opacity=0.6
-        ), row=1, col=1)
+    # ── RSI on bottom panel if present ───────────────────────────
+    rsi_cols = [c for c in df_plot.columns if c.startswith('RSI_')]
+    has_rsi  = len(rsi_cols) > 0
 
     # ── Long signals (shown in long chart and both chart) ────────
     long_df = df_plot[df_plot['long_signal']] if show in ('long', 'both') else df_plot.iloc[0:0]
@@ -1776,6 +1826,25 @@ def draw_chart(df, strategy, symbol, data_source, show='both'):
                 text=f"TP {tp_pct*100:.0f}%", showarrow=False,
                 font=dict(color='#4ade80', size=9),
                 xanchor='left', row=1, col=1)
+
+    # ── Bottom panel: RSI if present, else volume ───────────────
+    if rsi_cols:
+        rsi_col = rsi_cols[0]
+        fig.add_trace(go.Scatter(
+            x=df_plot.index, y=df_plot[rsi_col],
+            name=rsi_col, line=dict(color='#a78bfa', width=1.5)
+        ), row=2, col=1)
+        fig.add_hline(y=70, line_color='#ef4444', line_dash='dash',
+                      line_width=1, opacity=0.6, row=2, col=1)
+        fig.add_hline(y=30, line_color='#4ade80', line_dash='dash',
+                      line_width=1, opacity=0.6, row=2, col=1)
+    else:
+        bar_colors = ['#26a69a' if c >= o else '#ef5350'
+                      for c, o in zip(df_plot['Close'], df_plot['Open'])]
+        fig.add_trace(go.Bar(
+            x=df_plot.index, y=df_plot['Volume'],
+            name='Volume', marker_color=bar_colors, opacity=0.6
+        ), row=2, col=1)
 
     # ── Short signals (shown in short chart and both chart) ───────
     short_df = df_plot[df_plot['short_signal']] if show in ('short', 'both') else df_plot.iloc[0:0]
@@ -1993,7 +2062,9 @@ if st.session_state.parsed:
                        unsafe_allow_html=True)
             with st.spinner("🎨 Building charts..."):
                 df = add_indicators(df, p.get('indicator_params', {}))
-                df = generate_signals(df, p)
+                df = generate_signals(df, p,
+                    client=client,
+                    description=st.session_state.get('description',''))
                 st.session_state.df          = df
                 st.session_state.data_source = source
                 # Build two separate figures
