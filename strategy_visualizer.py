@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import requests
 import json
 from datetime import datetime
@@ -62,7 +60,7 @@ html, body, [class*="css"] {
 }
 .tag {
     display: inline-block; padding: 2px 10px; border-radius: 4px;
-    font-family: 'IBM Plex Mon Mono', monospace; font-size: 0.72rem; margin: 3px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; margin: 3px;
 }
 .tag-entry { background:#1a2e1a; color:#4ade80; border:1px solid #166534; }
 .tag-sl    { background:#2e1a1a; color:#f87171; border:1px solid #991b1b; }
@@ -77,8 +75,7 @@ html, body, [class*="css"] {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.68rem; color: #f59e0b;
     letter-spacing: 3px; text-transform: uppercase;
-    border-bottom: 1px solid #1e2030;
-    padding-bottom: 8px; margin: 20px 0 14px;
+    border-bottom: 1px solid #1e2030; padding-bottom: 8px; margin: 20px 0 14px;
 }
 [data-testid="stSidebar"] {
     background: #06080c; border-right: 1px solid #1e2030;
@@ -104,9 +101,109 @@ html, body, [class*="css"] {
 """, unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════
-# INDICATOR LIBRARY ─────────────────────────────────────────────────
+# PAGE CONFIG
 # ═══════════════════════════════════════════════════════════════
+st.set_page_config(
+    page_title="Strategy Visualizer | Quant Alpha",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
+# ═══════════════════════════════════════════════════════════════
+# CSS
+# ═══════════════════════════════════════════════════════════════
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Syne:wght@400;600;800&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Syne', sans-serif;
+    background-color: #080a0f;
+    color: #e8e0d0;
+}
+.stApp { background-color: #080a0f; }
+
+.main-header {
+    background: linear-gradient(135deg, #0d0f14 0%, #1a1508 100%);
+    border: 1px solid #3d2f00; border-radius: 12px;
+    padding: 28px 32px; margin-bottom: 24px;
+}
+.main-header h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.8rem; color: #f59e0b;
+    margin: 0; letter-spacing: -1px;
+}
+.main-header p { color: #6b5b3a; margin: 6px 0 0; font-size: 0.9rem; }
+
+.step-card {
+    background: #0d0f14; border: 1px solid #1e2030;
+    border-radius: 10px; padding: 20px; margin-bottom: 16px;
+}
+.step-card.active { border-color: #f59e0b; }
+.step-card.done   { border-color: #22c55e; }
+.step-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem; color: #f59e0b;
+    letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px;
+}
+.parsed-box {
+    background: #0a0c10; border: 1px solid #1e2030;
+    border-left: 4px solid #f59e0b; border-radius: 8px;
+    padding: 16px; font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem; color: #a89060; margin: 12px 0;
+}
+.tag {
+    display: inline-block; padding: 2px 10px; border-radius: 4px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; margin: 3px;
+}
+.tag-entry { background:#1a2e1a; color:#4ade80; border:1px solid #166534; }
+.tag-sl    { background:#2e1a1a; color:#f87171; border:1px solid #991b1b; }
+.tag-tp    { background:#1a2a1a; color:#86efac; border:1px solid #15803d; }
+.data-source-box {
+    background:#0a0c10; border:1px solid #1e2030;
+    border-left:4px solid #3b82f6; border-radius:8px;
+    padding:12px 16px; font-family:'IBM Plex Mono',monospace;
+    font-size:0.78rem; color:#60a5fa; margin:8px 0;
+}
+.section-hdr {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem; color: #f59e0b;
+    letter-spacing: 3px; text-transform: uppercase;
+    border-bottom: 1px solid #1e2030; padding-bottom: 8px; margin: 20px 0 14px;
+}
+[data-testid="stSidebar"] {
+    background: #06080c; border-right: 1px solid #1e2030;
+}
+.stButton > button {
+    background: linear-gradient(135deg,#92400e,#b45309);
+    color: #fef3c7; border: none; border-radius: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700; padding: 12px 24px; width: 100%;
+    transition: all 0.2s; letter-spacing: 1px;
+}
+.stButton > button:hover {
+    background: linear-gradient(135deg,#b45309,#d97706);
+    transform: translateY(-1px);
+}
+.stTextArea textarea, .stTextInput input {
+    background: #0a0c10 !important; color: #e8e0d0 !important;
+    border: 1px solid #1e2030 !important; border-radius: 8px !important;
+    font-family: 'IBM Plex Mono', monospace !important; font-size: 0.85rem !important;
+}
+#MainMenu, footer, header { visibility: hidden; }
+</style>
+""", unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════
+# QUANT ALPHA INDICATOR LIBRARY — internal, tested, always correct
+# ═══════════════════════════════════════════════════════════════
+import pandas as pd
+import numpy as np
+
+# ═══════════════════════════════════════════════════════════════
+# SECTION 1 — TREND INDICATORS
+# ═══════════════════════════════════════════════════════════════
 def add_ema(df: pd.DataFrame, period: int) -> pd.DataFrame:
     """Exponential Moving Average"""
     col = f'EMA_{period}'
@@ -121,11 +218,10 @@ def add_sma(df: pd.DataFrame, period: int) -> pd.DataFrame:
 
 def add_wma(df: pd.DataFrame, period: int) -> pd.DataFrame:
     """Weighted Moving Average"""
-    col = f'WMAMA_{period}'
+    col = f'WMA_{period}'
     weights = np.arange(1, period + 1)
     df[col] = df['Close'].rolling(period).apply(
-        lambda x: np.dot(x, weights) / weights.sum(), raw=True
-    )
+        lambda x: np.dot(x, weights) / weights.sum(), raw=True)
     return df
 
 def add_vwap(df: pd.DataFrame) -> pd.DataFrame:
@@ -159,8 +255,10 @@ def add_supertrend(df: pd.DataFrame,
     for i in range(1, len(df)):
         if df['Close'].iloc[i] > upper.iloc[i-1]:
             direction.iloc[i] = 1
+            supertrend.iloc[i] = lower.iloc[i]
         elif df['Close'].iloc[i] < lower.iloc[i-1]:
             direction.iloc[i] = -1
+            supertrend.iloc[i] = upper.iloc[i-1]
         else:
             direction.iloc[i] = direction.iloc[i-1]
             if direction.iloc[i] == 1 and lower.iloc[i] < lower.iloc[i-1]:
@@ -168,16 +266,66 @@ def add_supertrend(df: pd.DataFrame,
             if direction.iloc[i] == -1 and upper.iloc[i] > upper.iloc[i-1]:
                 upper.iloc[i] = upper.iloc[i-1]
 
-        supertrend.iloc[i] = lower.iloc[i] if direction.iloc[i] == 1 else upper.iloc[i]
+            supertrend.iloc[i] = lower.iloc[i] if direction.iloc[i] == 1 else upper.iloc[i]
 
     df['Supertrend']           = supertrend
     df['Supertrend_Direction'] = direction
     return df
 
+# ═══════════════════════════════════════════════════════════════
+# SECTION 2 — MOMENTUM INDICATORS
+# ═══════════════════════════════════════════════════════════════
+def add_rsi(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
+    """Relative Strength Index"""
+    col   = f'RSI_{period}'
+    delta = df['Close'].diff()
+    gain  = delta.clip(lower=0).rolling(period).mean()
+    loss  = (-delta.clip(upper=0)).rolling(period).mean()
+    rs    = gain / loss.replace(0, np.nan)
+    df[col] = 100 - (100 / (1 + rs))
+    return df
+
+def add_stochastic(df: pd.DataFrame,
+                   k_period: int = 14, d_period: int = 3) -> pd.DataFrame:
+    """Stochastic Oscillator %K and %D"""
+    low_min  = df['Low'].rolling(k_period).min()
+    high_max = df['High'].rolling(k_period).max()
+    df['Stoch_K'] = 100 * (df['Close'] - low_min) / (high_max - low_min)
+    df['Stoch_D'] = df['Stoch_K'].rolling(d_period).mean()
+    return df
+
+def add_cci(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
+    """Commodity Channel Index"""
+    tp          = (df['High'] + df['Low'] + df['Close']) / 3
+    sma_tp      = tp.rolling(period).mean()
+    mad         = tp.rolling(period).apply(lambda x: np.abs(x - x.mean()).mean())
+    df[f'CCI_{period}'] = (tp - sma_tp) / (0.015 * mad)
+    return df
+
+def add_williams_r(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
+    """Williams %R"""
+    high_max = df['High'].rolling(period).max()
+    low_min  = df['Low'].rolling(period).min()
+    df[f'WR_{period}'] = -100 * (high_max - df['Close']) / (high_max - low_min)
+    return df
+
+def add_mfi(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
+    """Money Flow Index"""
+    tp = (df['High'] + df['Low'] + df['Close']) / 3
+    mf = tp * df['Volume']
+    pos_mf    = mf.where(tp > tp.shift(1), 0).rolling(period).sum()
+    neg_mf    = mf.where(tp < tp.shift(1), 0).rolling(period).sum()
+    mfr       = pos_mf / neg_mf.replace(0, np.nan)
+    df[f'MFI_{period}'] = 100 - (100 / (1 + mfr))
+    return df
+
+# ═══════════════════════════════════════════════════════════════
+# SECTION 3 — VOLATILITY INDICATORS
+# ═══════════════════════════════════════════════════════════════
 def add_atr(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
     """Average True Range"""
     col  = f'ATR_{period}'
-    tr  = pd.concat([
+    tr   = pd.concat([
         df['High'] - df['Low'],
         (df['High'] - df['Close'].shift(1)).abs(),
         (df['Low'] - df['Close'].shift(1)).abs()
@@ -213,6 +361,9 @@ def add_donchian(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
     df[f'DC_Mid_{period}']   = (df[f'DC_Upper_{period}'] + df[f'DC_Lower_{period}']) / 2
     return df
 
+# ═══════════════════════════════════════════════════════════════
+# SECTION 4 — VOLUME INDICATORS
+# ═══════════════════════════════════════════════════════════════
 def add_obv(df: pd.DataFrame) -> pd.DataFrame:
     """On-Balance Volume"""
     direction  = np.sign(df['Close'].diff())
@@ -226,10 +377,8 @@ def add_volume_sma(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
 
 def add_cmf(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
     """Chaikin Money Flow"""
-    clv       = ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / \
-                (df['High'] - df['Low']).replace(0, np.nan)
-    df['CMF'] = (clv * df['Volume']).rolling(period).sum() / \
-                df['Volume'].rolling(period).sum()
+    clv       = ((df['High'] + df['Low']) / 2 - df['Close']) / (df['High'] - df['Low'])
+    df['CMF'] = (clv * df['Volume']).rolling(period).sum() / df['Volume'].rolling(period).sum()
     return df
 
 def add_volume_spike(df: pd.DataFrame,
@@ -239,6 +388,9 @@ def add_volume_spike(df: pd.DataFrame,
     df['Volume_Spike'] = df['Volume'] > (multiplier * df[f'Vol_SMA_{period}'])
     return df
 
+# ═══════════════════════════════════════════════════════════════
+# SECTION 5 — PRICE ACTION
+# ═══════════════════════════════════════════════════════════════
 def add_swing_highs_lows(df: pd.DataFrame, lookback: int = 5) -> pd.DataFrame:
     """Swing Highs and Lows"""
     df['Swing_High'] = False
@@ -292,10 +444,10 @@ def add_candle_patterns(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     df['Bearish_Engulfing'] = (
-        (df['Open'] > df['Close']) &
-        (df['Close'].shift(1) > df['Open'].shift(1)) &
-        (df['Open'] > df['Close'].shift(1)) &
-        (df['Close'] < df['Open'].shift(1))
+        (df['Close'] < df['Open']) &
+        (df['Open'].shift(1) < df['Close'].shift(1)) &
+        (df['Close'] < df['Open'].shift(1)) &
+        (df['Open'] > df['Close'].shift(1))
     )
 
     df['Doji'] = body_abs < (0.1 * candle_range)
@@ -326,8 +478,8 @@ def add_candle_patterns(df: pd.DataFrame) -> pd.DataFrame:
 def add_inside_outside_bars(df: pd.DataFrame) -> pd.DataFrame:
     """Inside Bar and Outside Bar patterns"""
     df['Inside_Bar'] = (
-        (df['High'] < df['High'].shift(1)) &
-        (df['Low'] > df['Low'].shift(1))
+        (df['High'] <= df['High'].shift(1)) &
+        (df['Low'] >= df['Low'].shift(1))
     )
     df['Outside_Bar'] = (
         (df['High'] > df['High'].shift(1)) &
@@ -342,6 +494,9 @@ def add_support_resistance(df: pd.DataFrame,
     df[f'Support_{lookback}']    = df['Low'].rolling(lookback).min()
     return df
 
+# ═══════════════════════════════════════════════════════════════
+# SECTION 6 — SMC (Smart Money Concepts)
+# ═══════════════════════════════════════════════════════════════
 def add_structure_break(df: pd.DataFrame, lookback: int = 10) -> pd.DataFrame:
     """Break of Structure (BOS) and Change of Character (CHoCH)"""
     df = add_swing_highs_lows(df, lookback)
@@ -363,6 +518,7 @@ def add_structure_break(df: pd.DataFrame, lookback: int = 10) -> pd.DataFrame:
 
     return df
 
+
 def add_order_blocks(df: pd.DataFrame, lookback: int = 10) -> pd.DataFrame:
     """Order Blocks"""
     df = add_structure_break(df, lookback)
@@ -374,7 +530,7 @@ def add_order_blocks(df: pd.DataFrame, lookback: int = 10) -> pd.DataFrame:
         if df['CHoCH_Bullish'].iloc[i]:
             j = i - 1
             while j >= 0:
-                if df['Open'].iloc[j] > df['Close'].iloc[j]:
+                if df['Open'].iloc[j] < df['Close'].iloc[j]:  # bearish candle
                     df['Bullish_OB'].iloc[j] = True
                     break
                 j -= 1
@@ -382,25 +538,26 @@ def add_order_blocks(df: pd.DataFrame, lookback: int = 10) -> pd.DataFrame:
         if df['CHoCH_Bearish'].iloc[i]:
             j = i - 1
             while j >= 0:
-                if df['Close'].iloc[j] > df['Open'].iloc[j]:
+                if df['Open'].iloc[j] > df['Close'].iloc[j]:  # bullish candle
                     df['Bearish_OB'].iloc[j] = True
                     break
                 j -= 1
 
     return df
 
+
 def add_fair_value_gaps(df: pd.DataFrame) -> pd.DataFrame:
     """Fair Value Gaps / Imbalances"""
-    df['FVG_Bullish'] = df['Low'] > df['High'].shift(2)
-    df['FVG_Bearish'] = df['High'] < df['Low'].shift(2)
+    df['FVG_Bullish'] = df['Low'].shift(2) > df['High'].shift(1)
+    df['FVG_Bearish'] = df['High'].shift(2) < df['Low'].shift(1)
 
     df['FVG_Bull_Low']  = df['High'].shift(2).where(df['FVG_Bullish'])
-    df['FVG_Bull_High'] = df['Low'].where(df['FVG_Bullish'])
-
+    df['FVG_Bull_High'] = df['Low'].shift(1).where(df['FVG_Bullish'])
     df['FVG_Bear_High'] = df['Low'].shift(2).where(df['FVG_Bearish'])
-    df['FVG_Bear_Low']  = df['High'].where(df['FVG_Bearish'])
+    df['FVG_Bear_Low']  = df['High'].shift(1).where(df['FVG_Bearish'])
 
     return df
+
 
 def add_liquidity_levels(df: pd.DataFrame, lookback: int = 20) -> pd.DataFrame:
     """Liquidity pools"""
@@ -420,18 +577,22 @@ def add_liquidity_levels(df: pd.DataFrame, lookback: int = 20) -> pd.DataFrame:
 
     return df
 
+
 def add_premium_discount(df: pd.DataFrame, lookback: int = 50) -> pd.DataFrame:
     """Premium and Discount zones"""
     range_high = df['High'].rolling(lookback).max()
     range_low  = df['Low'].rolling(lookback).min()
     midpoint   = (range_high + range_low) / 2
 
-    df['In_Premium']  = df['Close'] > midpoint
+    df['In_Premium'] = df['Close'] > midpoint
     df['In_Discount'] = df['Close'] < midpoint
     df['Range_50pct'] = midpoint
 
     return df
 
+# ═══════════════════════════════════════════════════════════════
+# SECTION 7 — ICT CONCEPTS
+# ═══════════════════════════════════════════════════════════════
 def add_market_structure(df: pd.DataFrame,
                           lookback: int = 10) -> pd.DataFrame:
     """ICT Market Structure"""
@@ -442,9 +603,10 @@ def add_market_structure(df: pd.DataFrame,
 
     return df
 
+
 def add_optimal_trade_entry(df: pd.DataFrame,
                              lookback: int = 20) -> pd.DataFrame:
-    """ICT OTE (Optimal Trade Entry)"""
+    """ICT Optimal Trade Entry"""
     df = add_swing_highs_lows(df, lookback // 4)
 
     swing_h = df['High'].where(df['Swing_High']).ffill()
@@ -468,21 +630,16 @@ def add_optimal_trade_entry(df: pd.DataFrame,
 
     return df
 
+
 def add_killzones(df: pd.DataFrame) -> pd.DataFrame:
     """ICT Killzones"""
-    if not hasattr(df.index, 'hour'):
-        df['London_KZ']   = False
-        df['NewYork_KZ']  = False
-        df['LondonClose_KZ'] = False
-        df['Asian_KZ']    = False
-        return df
-
     h = df.index.hour
-    df['London_KZ']      = (h >= 2)  & (h < 5)
-    df['NewYork_KZ']     = (h >= 7)  & (h < 10)
+    df['London_KZ']   = (h >= 2) & (h < 5)
+    df['NewYork_KZ']  = (h >= 7) & (h < 10)
     df['LondonClose_KZ'] = (h >= 10) & (h < 12)
-    df['Asian_KZ']       = (h >= 20) | (h < 1)
+    df['Asian_KZ']    = (h >= 20) | (h < 1)
     return df
+
 
 def add_previous_day_levels(df: pd.DataFrame) -> pd.DataFrame:
     """Previous Day High, Low, Close"""
@@ -490,6 +647,7 @@ def add_previous_day_levels(df: pd.DataFrame) -> pd.DataFrame:
     df['PDL'] = df['Low'].shift(1)
     df['PDC'] = df['Close'].shift(1)
     return df
+
 
 def add_weekly_levels(df: pd.DataFrame) -> pd.DataFrame:
     """Previous Week High and Low"""
@@ -499,6 +657,7 @@ def add_weekly_levels(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop(columns=['Week'])
     return df
 
+
 def add_equal_highs_lows(df: pd.DataFrame,
                           tolerance: float = 0.001) -> pd.DataFrame:
     """Equal Highs (EQH) and Equal Lows (EQL)"""
@@ -506,17 +665,18 @@ def add_equal_highs_lows(df: pd.DataFrame,
 
     df['EQH'] = (
         df['Swing_High'] &
-        (abs(df['High'] - df['High'].shift(1)) / df['High'].shift(1) < tolerance) &
-        df['Swing_High'].shift(1)
+        (abs(df['High'] - df['High'].shift(1)) / df['High'].shift(1) < tolerance)
     )
     df['EQL'] = (
         df['Swing_Low'] &
-        (abs(df['Low'] - df['Low'].shift(1)) / df['Low'].shift(1) < tolerance) &
-        df['Swing_Low'].shift(1)
+        (abs(df['Low'] - df['Low'].shift(1)) / df['Low'].shift(1) < tolerance)
     )
 
     return df
 
+# ═══════════════════════════════════════════════════════════════
+# SECTION 8 — SIGNAL HELPERS (crossovers, thresholds)
+# ═══════════════════════════════════════════════════════════════
 def crossover(series_a: pd.Series, series_b: pd.Series) -> pd.Series:
     """Returns True on the bar where series_a crosses ABOVE series_b"""
     return (series_a > series_b) & (series_a.shift(1) <= series_b.shift(1))
@@ -542,9 +702,8 @@ def falling(series: pd.Series, periods: int = 1) -> pd.Series:
     return series < series.shift(periods)
 
 # ═══════════════════════════════════════════════════════════════
-# LIBRARY REFERENCE
+# LIBRARY REFERENCE — for AI prompt context
 # ═══════════════════════════════════════════════════════════════
-
 LIBRARY_REFERENCE = """
 AVAILABLE INDICATOR FUNCTIONS (all tested, all correct):
 
@@ -565,8 +724,8 @@ MOMENTUM:
 
 VOLATILITY:
 - add_atr(df, 14)               → df['ATR_14']
-- add_bollinger(df, 20, 2.0)    → df['BB_Mid'], df['BB_Upper'], df['BB_Lower']
-- add_keltner(df, 20, 10, 2.0)  → df['KC_Mid'], df['KC_Upper'], df['KC_Lower']
+- add_bollinger(df, 20, 2.0)    → df['BB_Upper'], df['BB_Lower'], df['BB_Mid']
+- add_keltner(df, 20, 10, 2.0)  → df['KC_Upper'], df['KC_Lower'], df['KC_Mid']
 - add_donchian(df, 20)          → df['DC_Upper_20'], df['DC_Lower_20']
 
 VOLUME:
@@ -575,50 +734,66 @@ VOLUME:
 - add_cmf(df, 20)               → df['CMF']
 - add_volume_spike(df, 20, 2.0) → df['Volume_Spike'] (bool)
 
-PRICE ACTION / SMC / ICT:
-- add_swing_highs_lows(df, 5)   → df['Swing_High'], df['Swing_Low'] (bool)
-- add_candle_patterns(df)       → df['Bullish_Engulfing'], df['Bearish_Engulfing'],
-                                   df['Hammer'], df['Shooting_Star'],
-                                   df['Bullish_Pin_Bar'], df['Bearish_Pin_Bar']
-- add_structure_break(df, 10)    → df['BOS_Bullish'], df['BOS_Bearish'],
-                                   df['CHoCH_Bullish'], df['CHoCH_Bearish']
+PRICE ACTION:
+- add_swing_highs_lowsows(df, 5)   → df['Swing_High'], df['Swing_Low'] (bool)
+- add_candle_patterns(df)       → df['Bullish_Engulfing'], df['Bearish_Engulfing'], df['Hammer'], df['Shooting_Star'], df['Bullish_Pin_Bar'], df['Bearish_Pin_Bar'], df['Doji']
+- add_inside_outside_bars(df)   → df['Inside_Bar'], df['Outside_Bar']
+- add_support_resistance(df,20) → df['Resistance_20'], df['Support_20']
+- add_higher_highs_lower_lows(df,5) → df['HH'], df['HL'], df['LH'], df['LL']
+
+SMC (Smart Money Concepts):
+- add_structure_break(df, 10)   → df['BOS_Bullish'], df['BOS_Bearish'], df['CHoCH_Bullish'], df['CHoCH_Bearish']
 - add_order_blocks(df, 10)      → df['Bullish_OB'], df['Bearish_OB']
 - add_fair_value_gaps(df)       → df['FVG_Bullish'], df['FVG_Bearish']
-- add_liquidity_levels(df, 20)  → df['BSL'], df['SSL'],
-                                   df['BSL_Sweep'], df['SSL_Sweep']
-- add_premium_discount(df, 50)   → df['In_Premium'], df['In_Discount']
-- add_market_structure(df, 10)  → df['Bullish_Structure'], df['Bearish_Structure']
-- add_optimal_trade_entry(df)   → df['In_OTE_Bullish'], df['In_OTE_Bearish']
+- add_liquidity_levels(df, 20)  → df['BSL'], df['SSL'], df['BSL_Sweep'], df['SSL_Sweep']
+- add_premium_discount(df, 50)  → df['In_Premium'], df['In_Discount'], df['Range_50pct']
+
+ICT:
+- add_market_structure(df, 10) → df['Bullish_Structure'], df['Bearish_Structure']
+- add_optimal_trade_entry(df, 20) → df['In_OTE_Bullish'], df['In_OTE_Bearish']
+- add_killzones(df)             → df['London_KZ'], df['NewYork_KZ'], df['LondonClose_KZ'], df['Asian_KZ']
 - add_previous_day_levels(df)   → df['PDH'], df['PDL'], df['PDC']
+- add_weekly_levels(df)         → df['PWH'], df['PWL']
+- add_equal_highs_lows(df, 0.001) → df['EQH'], df['EQL']
 
 SIGNAL HELPERS (return boolean Series):
 - crossover(series_a, series_b)  → True when a crosses above b
 - crossunder(series_a, series_b) → True when a crosses below b
-- above_level(series, value)     → True when series crosses above fixed level
-- below_level(series, value)     → True when series crosses below fixed level
-- rising(series, periods)       → True when series is rising over N periods
-- falling(series, periods)      → True when series is falling over N periods
+- above_level(series, level)    → True when series crosses above fixed level
+- below_level(series, level)    → True when series crosses below fixed level
+- rising(series, periods)       → True when series is rising
+- falling(series, periods)      → True when series is falling
 
 CONVENIENCE:
-- add_common_indicators(df)     → adds EMA 9/20/50, SMA 20/50, RSI, MACD, BB, ATR, OBV, swings, candles, support/resistance
+- add_common_indicators(df)     → adds EMA 9/20/50/200, SMA 20/50, RSI, MACD, BB, ATR, OBV, swings, candles
 - add_smc_indicators(df)        → adds all SMC/ICT indicators
+
+EXAMPLE SIGNALS:
+- EMA crossover long:  crossover(df['EMA_20'], df['EMA_50'])
+- RSI oversold:        below_level(df['RSI_14'], 30)
+- Bullish engulfing:   df['Bullish_Engulfing']
+- Liquidity sweep up:  df['SSL_Sweep']
+- FVG entry:           df['FVG_Bullish'] & df['In_Discount']
+- ICT OTE entry:       df['In_OTE_Bullish'] & df['Bullish_Structure']
+- SMC full setup:      df['CHoCH_Bullish'] & df['In_Discount'] & df['FVG_Bullish']
 """
 
 # ═══════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS
 # ═══════════════════════════════════════════════════════════════
-
 def fetch_binance(symbol: str, period: str):
-    """Fetch from Binance"""
+    """Fetch from Binance with 3 retries"""
     sym   = symbol.upper()
     limit = 90
-    
+    if not sym:
+        return None
+
     import time
     for attempt in range(3):
         try:
             resp = requests.get(
-                f"https://api.binance.com/api/v3/klines",
-                params={'symbol': sym, 'interval': period, 'limit': min(limit, 1000)},
+                "https://api.binance.com/api/v3/klines",
+                params={'symbol': sym, 'interval': '1d', 'limit': min(limit, 1000)},
                 timeout=15
             )
             if resp.status_code == 200:
@@ -628,4 +803,1097 @@ def fetch_binance(symbol: str, period: str):
                         'timestamp','Open','High','Low','Close','Volume',
                         'ct','qv','nt','tbb','tbq','ignore'
                     ])
-                    df['Date']
+                    df['Date'] = pd.to_datetime(df['timestamp'], unit="ms")
+                    df = df[['Open','High','Low','Close','Volume']].astype(float)
+                    return df.dropna().sort_index()
+            # Wait before retry
+            if attempt < 2:
+                time.sleep(2)
+        except Exception:
+            if attempt < 2:
+                time.sleep(2)
+    return None
+
+
+def fetch_coingecko(symbol: str, days: int):
+    """Fetch from CoinGecko free API"""
+    coin_id = COINGECKO_IDS.get(symbol.upper(), symbol.lower())
+    api_key = ""
+    try:
+        api_key = st.secrets.get("COINGECKO_API_KEY", "")
+    except Exception:
+        pass
+    headers = {'User-Agent': 'QuantAlpha/1.0'}
+    if api_key:
+        headers['x-cg-demo-api-key'] = api_key
+    try:
+        resp = requests.get(
+            f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc"
+            f"?vs_currency=usd&days={days}",
+            timeout=15, headers=headers
+        )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if not data or not isinstance(data, list):
+            return None
+        df = pd.DataFrame(
+            data, columns=['timestamp','Open','High','Low','Close']
+        )
+        df['Date'] = pd.to_datetime(df['timestamp'], unit="ms")
+        df = df.set_index('Date').drop('timestamp', axis=1).astype(float)
+        df['Volume'] = 0.0
+        return df.resample('D').last().dropna()
+    except Exception:
+        return None
+
+
+def load_csv(uploaded_file):
+    """
+    Load CSV — supports multiple formats:
+    1. MT5 format: tab-separated, date+time columns, 2023.01.01 date format
+    2. Standard format: Date/Open/High/Low/Close columns
+    3. Any reasonable OHLC CSV
+    """
+    import io
+
+    try:
+        # Read raw bytes first to detect format
+        raw = uploaded_file.read()
+        uploaded_file.seek(0)
+
+        # ── Try MT5 format first ──────────────────────────────
+        # MT5 exports: <DATE>\t<TIME>\t<OPEN>\t<HIGH>\t<LOW>\t<CLOSE>\t...
+        # With a header row that starts with <
+        try:
+            content = raw.decode('utf-8')
+            lines   = content.strip().split('\n')
+
+            # Detect MT5 by checking if first line has <DATE> or tab-separated
+            is_mt5 = ('<DATE>' in lines[0] or
+                      '\t' in lines[0] or
+                      lines[0].startswith('<'))
+
+            if is_mt5:
+                # Remove angle brackets from headers
+                header = lines[0].replace('<','').replace('>','').strip()
+                cols   = [c.strip().lower() for c in header.split('\t')]
+
+                rows = []
+                for line in lines[1:]:
+                    if line.strip():
+                        rows.append(line.strip().split('\t'))
+
+                df = pd.DataFrame(rows, columns=cols)
+
+                # MT5 has separate date and time columns
+                if 'date' in cols and 'time' in cols:
+                    df['datetime'] = pd.to_datetime(
+                        df['date'] + ' ' + df['time'],
+                        format='%Y.%m.%d %H:%M:%S',
+                        errors='coerce'
+                    )
+                    # Fallback format without seconds
+                    mask = df['datetime'].isna()
+                    if mask.any():
+                        df.loc[mask, 'datetime'] = pd.to_datetime(
+                            df.loc[mask,'date'] + ' ' + df.loc[mask,'time'],
+                            format='%Y.%m.%d %H:%M',
+                            errors='coerce'
+                        )
+                    df = df.set_index('datetime')
+                elif 'date' in cols:
+                    df.index = pd.to_datetime(
+                        df['date'], format='%Y.%m.%d', errors='coerce'
+                    )
+                    df = df.drop(columns=['date'], errors='ignore')
+
+                df.index.name = 'Date'
+
+                # Rename MT5 columns to standard names
+                rename_map = {
+                    'open': 'Open', 'high': 'High',
+                    'low': 'Low', 'close': 'Close',
+                    'vol': 'Volume', 'tick vol': 'Volume',
+                    'tick volume': 'Volume', 'volume': 'Volume'
+                }
+                df = df.rename(columns=rename_map)
+
+                # Keep required columns
+                required = ['Open','High','Low','Close']
+                missing  = [c for c in required if c not in df.columns]
+                if missing:
+                    st.error(f"MT5 CSV missing columns: {missing}")
+                    return None
+
+                if 'Volume' not in df.columns:
+                    df['Volume'] = 0.0
+
+                df = df[['Open','High','Low','Close','Volume']].astype(float)
+                df = df.dropna().sort_index()
+
+                if len(df) > 0:
+                    st.success(
+                        f"✅ MT5 format detected — {len(df):,} bars loaded"
+                    )
+                    return df
+
+        except Exception:
+            pass
+
+        # ── Try standard CSV format ───────────────────────────
+        uploaded_file.seek(0)
+        df = pd.read_csv(uploaded_file)
+        df.columns = [c.strip().title() for c in df.columns]
+
+        # Find date column
+        date_col = next(
+            (c for c in ['Date','Datetime','Timestamp','Time','Open Time']
+             if c in df.columns),
+            None
+        )
+        if date_col is None:
+            # Try first column as date
+            first_col = df.columns[0]
+            try:
+                pd.to_datetime(df[first_col].iloc[0])
+                date_col = first_col
+            except Exception:
+                st.error(
+                    "Cannot find date column. "
+                    "Expected: Date, Datetime, Timestamp, or Time"
+                )
+                return None
+
+        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+        df = df.set_index(date_col)
+        df.index.name = 'Date'
+
+        # Check required columns
+        required = ['Open','High','Low','Close']
+        missing  = [c for c in required if c not in df.columns]
+        if missing:
+            st.error(f"CSV missing columns: {missing}")
+            return None
+
+        if 'Volume' not in df.columns:
+            df['Volume'] = 0.0
+
+        df = df[['Open','High','Low','Close','Volume']].astype(float)
+        df = df.dropna().sort_index()
+        return df
+
+    except Exception as e:
+        st.error(f"CSV error: {e}")
+        return None
+
+
+def fetch_data(symbol, period, uploaded_file=None):
+    """Try all data sources in order"""
+
+    # 1. User CSV upload (highest priority)
+    if uploaded_file is not None:
+        uploaded_file.seek(0)
+        df = load_csv(uploaded_file)
+        if df is not None and len(df) > 30:
+            return df, "📁 Your CSV"
+        else:
+            st.warning(
+                "CSV uploaded but could not be read. "
+                "Trying live data sources..."
+            )
+
+    # 2. Binance (most reliable for crypto)
+    with st.spinner("📡 Trying Binance..."):
+        df = fetch_binance(symbol, period)
+    if df is not None and len(df) > 30:
+        return df, "🟡 Binance"
+
+    # 3. CoinGecko fallback
+    with st.spinner("📡 Trying CoinGecko..."):
+        days = PERIOD_DAYS.get(period, 90)
+        df   = fetch_coingecko(symbol, days)
+    if df is not None and len(df) > 30:
+        return df, "🦎 CoinGecko"
+
+    return None, None
+
+# ═══════════════════════════════════════════════════════════════
+# GROQ INIT
+# ═══════════════════════════════════════════════════════════════
+def init_llm():
+    if not GROQ_AVAILABLE:
+        st.error("groq package not installed.")
+        return None
+    try:
+        return Groq(api_key=st.secrets["GROQ_API_KEY"])
+    except ImportError:
+        st.error("groq package not installed.")
+        return None
+    except Exception as e:
+        st.error(f"Groq error: {e}")
+        return None
+
+# ─────────────────────────────────────────────────────────────
+# DATA — BINANCE (primary) + COINGECKO (fallback) + CSV (manual)
+# ─────────────────────────────────────────────────────────────
+def fetch_binance(symbol: str, period: str):
+    """Fetch from Binance with 3 retries"""
+    sym   = symbol.upper()
+    limit = 90
+    if not sym:
+        return None
+
+    import time
+    for attempt in range(3):
+        try:
+            resp = requests.get(
+                "https://api.binance.com/api/v3/klines",
+                params={'symbol': sym, 'interval': '1d', 'limit': min(limit, 1000)},
+                timeout=15
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data:
+                    df = pd.DataFrame(data, columns=[
+                        'timestamp','Open','High','Low','Close','Volume',
+                        'ct','qv','nt','tbb','tbq','ignore'
+                    ])
+                    df['Date'] = pd.to_datetime(df['timestamp'], unit="ms")
+                    df = df[['Open','High','Low','Close','Volume']].astype(float)
+                    return df.dropna().sort_index()
+            # Wait before retry
+            if attempt < 2:
+                time.sleep(2)
+        except Exception:
+            if attempt < 2:
+                time.sleep(2)
+    return None
+
+
+def fetch_coingecko(symbol: str, days: int):
+    """Fetch from CoinGecko free API"""
+    coin_id = COINGECKO_IDS.get(symbol.upper(), symbol.lower())
+    api_key = ""
+    try:
+        api_key = st.secrets.get("COINGECKO_API_KEY", "")
+    except Exception:
+        pass
+    headers = {'User-Agent': 'QuantAlpha/1.0'}
+    if api_key:
+        headers['x-cg-demo-api-key'] = api_key
+    try:
+        resp = requests.get(
+            f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc"
+            f"?vs_currency=usd&days={days}",
+            timeout=15, headers=headers
+        )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if not data or not isinstance(data, list):
+            return None
+        df = pd.DataFrame(
+            data, columns=['timestamp','Open','High','Low','Close']
+        )
+        df['Date'] = pd.to_datetime(df['timestamp'], unit="ms")
+        df = df.set_index('Date').drop('timestamp', axis=1).astype(float)
+        df['Volume'] = 0.0
+        return df.resample('D').last().dropna()
+    except Exception:
+        return None
+
+
+def load_csv(uploaded_file):
+    """Load CSV with format detection"""
+    import io
+
+    try:
+        # Read raw bytes first to detect format
+        raw = uploaded_file.read()
+        uploaded_file.seek(0)
+
+        # ── Try MT5 format first ──────────────────────────────
+        try:
+            content = raw.decode('utf-8')
+            lines   = content.strip().split('\n')
+
+            # Detect MT5 by checking if first line has <DATE> or tab-separated
+            is_mt5 = ('<DATE>' in lines[0] or
+                      '\t' in lines[0] or
+                      lines[0].startswith('<'))
+
+            if is_mt5:
+                # Remove angle brackets from headers
+                header = lines[0].replace('<','').replace('>','').strip()
+                cols   = [c.strip().lower() for c in header.split('\t')]
+
+                rows = []
+                for line in lines[1:]:
+                    if line.strip():
+                        rows.append(line.strip().split('\t'))
+
+                df = pd.DataFrame(rows, columns=cols)
+
+                # MT5 has separate date and time columns
+                if 'date' in cols and 'time' in cols:
+                    df['datetime'] = pd.to_datetime(
+                        df['date'] + ' ' + df['time'],
+                        format='%Y.%m.%d %H:%M:%S',
+                        errors='coerce'
+                    )
+                    # Fallback format without seconds
+                    mask = df['datetime'].isna()
+                    if mask.any():
+                        df.loc[mask, 'datetime'] = pd.to_datetime(
+                            df.loc[mask,'date'] + ' ' + df.loc[mask,'time'],
+                            format='%Y.%m.%d %H:%M',
+                            errors='coerce'
+                        )
+                    df = df.set_index('datetime')
+                elif 'date' in cols:
+                    df.index = pd.to_datetime(
+                        df['date'], format='%Y.%m.%d', errors='coerce'
+                    )
+                    df = df.drop(columns=['date'], errors='ignore')
+
+                df.index.name = 'Date'
+
+                # Rename MT5 columns to standard names
+                rename_map = {
+                    'open': 'Open', 'high': 'High',
+                    'low': 'Low', 'close': 'Close',
+                    'vol': 'Volume', 'tick vol': 'Volume',
+                    'tick volume': 'Volume', 'volume': 'Volume'
+                }
+                df = df.rename(columns=rename_map)
+
+                # Keep required columns
+                required = ['Open','High','Low','Close']
+                missing  = [c for c in required if c not in df.columns]
+                if missing:
+                    st.error(f"MT5 CSV missing columns: {missing}")
+                    return None
+
+                if 'Volume' not in df.columns:
+                    df['Volume'] = 0.0
+
+                df = df[['Open','High','Low','Close','Volume']].astype(float)
+                df = df.dropna().sort_index()
+
+                if len(df) > 0:
+                    st.success(
+                        f"✅ MT5 format detected — {len(df):,} bars loaded"
+                    )
+                    return df
+
+        except Exception:
+            pass
+
+        # ── Try standard CSV format ───────────────────────────
+        uploaded_file.seek(0)
+        df = pd.read_csv(uploaded_file)
+        df.columns = [c.strip().title() for c in df.columns]
+
+        # Find date column
+        date_col = next(
+            (c for c in ['Date','Datetime','Timestamp','Time','Open Time']
+             if c in df.columns),
+            None
+        )
+        if date_col is None:
+            # Try first column as date
+            first_col = df.columns[0]
+            try:
+                pd.to_datetime(df[first_col].iloc[0])
+                date_col = first_col
+            except Exception:
+                st.error(
+                    "Cannot find date column. "
+                    "Expected: Date, Datetime, Timestamp, or Time"
+                )
+                return None
+
+        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+        df = df.set_index(date_col)
+        df.index.name = 'Date'
+
+        # Check required columns
+        required = ['Open','High','Low','Close']
+        missing  = [c for c in required if c not in df.columns]
+        if missing:
+            st.error(f"CSV missing columns: {missing}")
+            return None
+
+        if 'Volume' not in df.columns:
+            df['Volume'] = 0.0
+
+        df = df[['Open','High','Low','Close','Volume']].astype(float)
+        df = df.dropna().sort_index()
+        return df
+
+    except Exception as e:
+        st.error(f"CSV error: {e}")
+        return None
+
+
+def fetch_data(symbol, period, uploaded_file=None):
+    """Try all data sources in order"""
+
+    # 1. User CSV upload (highest priority)
+    if uploaded_file is not None:
+        uploaded_file.seek(0)
+        df = load_csv(uploaded_file)
+        if df is not None and len(df) > 30:
+            return df, "📁 Your CSV"
+        else:
+            st.warning(
+                "CSV uploaded but could not be read. "
+                "Trying live data sources..."
+            )
+
+    # 2. Binance (most reliable for crypto)
+    with st.spinner("📡 Trying Binance..."):
+        df = fetch_binance(symbol, period)
+    if df is not None and len(df) > 30:
+        return df, "🟡 Binance"
+
+    # 3. CoinGecko fallback
+    with st.spinner("📡 Trying CoinGecko..."):
+        days = PERIOD_DAYS.get(period, 90)
+        df   = fetch_coingecko(symbol, days)
+    if df is not None and len(df) > 30:
+        return df, "🦎 CoinGecko"
+
+    return None, None
+
+# ─────────────────────────────────────────────────────────────
+# GROQ HELPERS
+# ─────────────────────────────────────────────────────────────
+def parse_strategy(client, description: str):
+    prompt = f"""You are a quantitative trading expert.
+Parse this trading strategy into structured JSON.
+
+Strategy: "{description}"
+
+Return ONLY valid JSON — no markdown, no explanation:
+{{
+  "entry_long": "long entry condition or null if no long",
+  "entry_short": "short entry condition or null if no short",
+  "stop_loss": "stop loss description",
+  "take_profit": "take profit description",
+  "indicators": ["list of indicators"],
+  "strategy_type": "trend or mean-reversion or breakout or momentum",
+  "sl_pct": 0.02,
+  "tp_pct": 0.06,
+  "indicator_params": {{
+    "ema_fast": 20, "ema_slow": 50,
+    "rsi_period": 14, "rsi_overbought": 70, "rsi_oversold": 30
+  }},
+  "summary": "one sentence summary"
+}}
+
+IMPORTANT:
+- If user only says BUY/LONG — set entry_short to null
+- If user only says SELL/SHORT — set entry_long to null
+- Only set both if user explicitly mentions both directions"""
+
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=600, temperature=0.1
+        )
+        text = response.choices[0].message.content.strip()
+        if '```json' in text:
+            text = text.split('```json')[1].split('```')[0]
+        elif '```' in text:
+            text = text.split('```')[1].split('```')[0]
+        result = json.loads(text.strip())
+
+        # Sanitize — ensure critical numeric fields are never None
+        result['sl_pct'] = result.get('sl_pct') or 0.02
+        result['tp_pct'] = result.get('tp_pct') or 0.06
+        result['strategy_type'] = result.get('strategy_type') or 'trend'
+        result['summary']       = result.get('summary') or 'Trading Strategy'
+        result['indicators']    = result.get('indicators') or []
+        result['indicator_params'] = result.get('indicator_params') or {
+            'ema_fast': 20, 'ema_slow': 50,
+            'rsi_period': 14, 'rsi_overbought': 70, 'rsi_oversold': 30
+        }
+        # Ensure indicator_params values are never None
+        ip = result['indicator_params']
+        ip['ema_fast']       = ip.get('ema_fast')       or 20
+        ip['ema_slow']       = ip.get('ema_slow')       or 50
+        ip['rsi_period']     = ip.get('rsi_period')     or 14
+        ip['rsi_overbought'] = ip.get('rsi_overbought') or 70
+        ip['rsi_oversold']   = ip.get('rsi_oversold')   or 30
+
+        return result
+    except json.JSONDecodeError:
+        st.error("AI returned invalid JSON. Please rephrase your strategy.")
+        return None
+    except Exception as e:
+        st.error(f"Parse error: {e}")
+        return None
+
+
+def detect_advanced_features(description: str) -> dict:
+    """Detect direction and advanced features from description"""
+    d = description.lower()
+    return {
+        'has_partial_close':  any(w in d for w in ['partial', 'scale out', 'partial close']),
+        'has_trailing_stop':  any(w in d for w in ['trail', 'trailing']),
+        'has_both_directions':any(w in d for w in ['short', 'sell when', 'both']),
+        'has_long':           any(w in d for w in ['buy', 'long', 'bullish']),
+    }
+
+
+def generate_signal_block(client, description: str, strategy: dict) -> str:
+    """
+    GROQ's ONLY JOB: translate plain English → signal lines.
+    Everything else is hardcoded by us.
+
+    THE FIX vs previous versions:
+    - No static EMA 20/50 example — that was why Groq kept outputting EMA 20/50
+    - Dynamic prompt built from actual strategy Groq already parsed
+    - Auto-repair layer catches any remaining mistakes
+    - Groq gets told WHAT indicators the strategy needs (from parse step)
+    """
+    features    = detect_advanced_features(description)
+    has_long    = features['has_long'] or not features['has_both_directions']
+    has_short   = features['has_both_directions']
+    stype       = strategy.get('strategy_type', 'trend')
+    indicators  = strategy.get('indicators', [])
+    params      = strategy.get('indicator_params', {}) or {}
+
+    # Build direction rule
+    if has_long and has_short:
+        direction = "BOTH long AND short"
+        signal_template = """\
+df['long_signal']  = <YOUR_LONG_CONDITION>.fillna(False)
+df['short_signal'] = <YOUR_SHORT_CONDITION>.fillna(False)
+df['Signal']       = df['long_signal'].astype(int) - df['short_signal'].astype(int)"""
+    elif has_short:
+        direction = "SHORT only"
+        signal_template = """\
+df['long_signal']  = pd.Series(False, index=df.index)
+df['short_signal'] = <YOUR_SHORT_CONDITION>.fillna(False)
+df['Signal']       = -df['short_signal'].astype(int)"""
+    else:
+        direction = "LONG only"
+        signal_template = """\
+df['long_signal']  = <YOUR_LONG_CONDITION>.fillna(False)
+df['short_signal'] = pd.Series(False, index=df.index)
+df['Signal']       = df['long_signal'].astype(int)"""
+
+    # Build hint about what indicators the strategy uses
+    ind_hint = f"Strategy type: {stype}\nIndicators mentioned: {', '.join(indicators) if indicators else 'detect from description'}"
+    if params.get('ema_fast'): ind_hint += f"\nEMA fast period: {params['ema_fast']}"
+    if params.get('ema_slow'): ind_hint += f"\nEMA slow period: {params['ema_slow']}"
+    if params.get('rsi_period'): ind_hint += f"\nRSI period: {params['rsi_period']}"
+
+    prompt = f"""You are a Python quant developer.
+Translate this trading strategy into Python signal detection code.
+
+STRATEGY: "{description}"
+DIRECTION: {direction}
+{ind_hint}
+
+AVAILABLE FUNCTIONS (pre-built library — call these, never write formulas):
+
+INDICATORS (call to add columns to df):
+add_ema(df, period)        → df['EMA_20'], df['EMA_50'], etc.
+add_sma(df, period)        → df['SMA_20']
+add_rsi(df, period)        → df['RSI_14']
+add_macd(df, 12, 26, 9)    → df['MACD'], df['MACD_Signal'], df['MACD_Hist']
+add_bollinger(df, 20, 2.0) → df['BB_Upper'], df['BB_Lower'], df['BB_Mid']
+add_atr(df, 14)            → df['ATR_14']
+add_stochastic(df, 14, 3)  → df['Stoch_K'], df['Stoch_D']
+add_vwap(df)               → df['VWAP']
+add_obv(df)                → df['OBV']
+add_volume_spike(df, 20, 2.0) → df['Volume_Spike'] (bool)
+add_supertrend(df, 10, 3.0)   → df['Supertrend'], df['Supertrend_Direction']
+
+PRICE ACTION / SMC / ICT:
+add_swing_highs_lows(df, 5)   → df['Swing_High'], df['Swing_Low'] (bool)
+add_candle_patterns(df)       → df['Bullish_Engulfing'], df['Bearish_Engulfing'], df['Hammer'], df['Shooting_Star'], df['Bullish_Pin_Bar'], df['Bearish_Pin_Bar'], df['Doji']
+add_structure_break(df, 10)   → df['BOS_Bullish'], df['BOS_Bearish'], df['CHoCH_Bullish'], df['CHoCH_Bearish']
+add_fair_value_gaps(df)       → df['FVG_Bullish'], df['FVG_Bearish']
+add_liquidity_levels(df, 20)  → df['BSL'], df['SSL'], df['BSL_Sweep'], df['SSL_Sweep']
+add_order_blocks(df, 10)      → df['Bullish_OB'], df['Bearish_OB']
+add_premium_discount(df, 50)  → df['In_Premium'], df['In_Discount'], df['Range_50pct']
+add_market_structure(df, 10) → df['Bullish_Structure'], df['Bearish_Structure']
+add_optimal_trade_entry(df, 20) → df['In_OTE_Bullish'], df['In_OTE_Bearish']
+add_killzones(df)             → df['London_KZ'], df['NewYork_KZ'], df['LondonClose_KZ'], df['Asian_KZ']
+add_previous_day_levels(df)   → df['PDH'], df['PDL'], df['PDC']
+add_weekly_levels(df)         → df['PWH'], df['PWL']
+add_equal_highs_lows(df, 0.001) → df['EQH'], df['EQL']
+
+SIGNAL HELPERS (return boolean Series):
+crossover(series_a, series_b)  → True when a crosses above b
+crossunder(series_a, series_b) → True when a crosses below b
+above_level(series, level)    → True when series crosses above fixed level
+below_level(series, level)    → True when series crosses below fixed level
+rising(series, periods)       → True when series is rising
+falling(series, periods)      → True when series is falling
+
+MANDATORY OUTPUT FORMAT — follow exactly:
+{signal_template}
+
+RULES:
+1. First call add_*() functions for every indicator you need
+2. Then write the signal conditions using library helpers
+3. df['Signal'] MUST always be the last line
+4. Both long_signal and short_signal MUST be assigned
+5. Output ONLY Python lines — no imports, no def, no markdown, no comments
+
+OUTPUT ONLY THE PYTHON LINES NOW:"""
+
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=800,
+            temperature=0.0
+        )
+        text = response.choices[0].message.content.strip()
+        if '```python' in text:
+            text = text.split('```python')[1].split('```')[0]
+        elif '```' in text:
+            text = text.split('```')[1].split('```')[0]
+
+        lines = [l for l in text.strip().splitlines()
+                 if not l.strip().startswith('import ')
+                 and not l.strip().startswith('from ')
+                 and l.strip() != '']
+
+        joined = '\n'.join(lines)
+
+        # ── AUTO-REPAIR: fix Groq mistakes ───────────────────
+        # Repair 1: Signal missing
+        if "df['Signal']" not in joined and 'df["Signal"]' not in joined:
+            if has_long and has_short:
+                lines.append("df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)")
+            elif has_short:
+                lines.append("df['Signal'] = -df['short_signal'].astype(int)")
+            else:
+                lines.append("df['Signal'] = df['long_signal'].astype(int)")
+
+        # Repair 2: long_signal missing
+        if "long_signal" not in joined:
+            lines.insert(0, "df['long_signal'] = pd.Series(False, index=df.index)")
+
+        # Repair 3: short_signal missing
+        if "short_signal" not in joined:
+            lines.insert(0, "df['short_signal'] = pd.Series(False, index=df.index)")
+
+        # Repair 4: fillna missing on boolean signals
+        repaired = []
+        for line in lines:
+            if (("long_signal']  =" in line or "long_signal'] =" in line) and
+                    'fillna' not in line and 'pd.Series' not in line and 'astype' not in line):
+                line = line.rstrip() + '.fillna(False)'
+            if (("short_signal']  =" in line or "short_signal'] =" in line) and
+                    'fillna' not in line and 'pd.Series' not in line and 'astype' not in line):
+                line = line.rstrip() + '.fillna(False)'
+            repaired.append(line)
+        lines = repaired
+
+        # Indent 4 spaces
+        return '\n'.join(
+            '    ' + line.lstrip() if line.strip() else ''
+            for line in lines
+        )
+
+    except Exception as e:
+        # Safe fallback
+        if has_long and has_short:
+            sig = "    df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)"
+        elif has_short:
+            sig = "    df['Signal'] = -df['short_signal'].astype(int)"
+        else:
+            sig = "    df['Signal'] = df['long_signal'].astype(int)"
+        return (
+            "    df['long_signal']  = pd.Series(False, index=df.index)\n"
+            "    df['short_signal'] = pd.Series(False, index=df.index)\n"
+            f"{sig}\n"
+            f"    # Signal generation failed: {e}"
+        )
+
+
+def generate_python_code(client, strategy, symbol,
+                          description: str = '') -> str:
+    """
+    Generates complete backtest code.
+    - Signal block: ALWAYS written by Groq via generate_signal_block()
+    - Everything else: hardcoded by us (math always correct)
+    """
+    binance_sym = BINANCE_SYMBOLS.get(symbol.upper(), 'BTCUSDT')
+    sl_pct      = strategy.get('sl_pct') or 0.01
+    tp_pct      = strategy.get('tp_pct') or 0.02
+    summary     = strategy.get('summary', 'Trading Strategy')
+    features    = detect_advanced_features(description)
+    has_trailing = features['has_trailing_stop']
+    has_partial  = features['has_partial_close']
+
+    # ── Signal block — Groq writes this ──────────────────────
+    signal_block = generate_signal_block(client, description, strategy)
+
+    # ── Read embedded library for inline inclusion ─────────────
+    try:
+        lib_lines = []
+        in_lib    = False
+        with open(__file__, 'r') as f:
+            for line in f:
+                if '# ═══════════════════════════════════════════════════════════════' in line and 'QUANT ALPHA INDICATOR LIBRARY' in line:
+                    in_lib = True
+                if in_lib:
+                    lib_lines.append(line)
+                if in_lib and 'LIBRARY_REFERENCE' in line and '"""' in line and len(lib_lines) > 5:
+                    break
+        lib_code = ''.join(lib_lines[:400])  # safety limit
+    except Exception:
+        lib_code = "# indicator library not found"
+
+    # ── Trailing / partial close config ───────────────────────
+    trail_arg   = "trail_pct=0.03"  if has_trailing else "trail_pct=None"
+    partial_arg = "partial_close_pct=0.3" if has_partial else "partial_close_pct=None"
+
+    code = f'''import requests
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+# ── Indicator Library ─────────────────────────────────────────
+{lib_code}
+
+# ── Fetch OHLCV from Binance ──────────────────────────────────
+def fetch_data():
+    try:
+        resp = requests.get(
+            "https://api.binance.com/api/v3/klines",
+            params={{"symbol": "{binance_sym}", "interval": "1d", "limit": 365}}
+        )
+        resp.raise_for_status()
+        raw = resp.json()
+        df  = pd.DataFrame(raw, columns=[
+            "Open time","Open","High","Low","Close","Volume",
+            "ct","qv","nt","tbb","tbq","ignore"
+        ])
+        df["Open time"] = pd.to_datetime(df["Open time"], unit="ms")
+        for col in ["Open","High","Low","Close","Volume"]:
+            df[col] = pd.to_numeric(df[col])
+        return df.drop(columns=["ct","qv","nt","tbb","tbq","ignore"])
+    except Exception as e:
+        print(f"Data error: {{e}}")
+        return None
+
+
+# ── Generate signals (AI-written, library-backed) ─────────────
+def generate_signals(df):
+{signal_block}
+    # Shift by 1 bar — prevents lookahead bias
+    df["Position"] = df["Signal"].shift(1).fillna(0)
+    return df
+
+
+# ── Backtest ──────────────────────────────────────────────────
+def backtest(df, sl_pct={{sl_pct}}, tp_pct={{tp_pct}},
+            trail_pct=None, partial_close_pct=None):
+    df["Return"] = df["Close"].pct_change()
+    if trail_pct is None:
+        df["Commission"]      = np.where(
+            df["Position"] != df["Position"].shift(1), 0.001, 0)
+        df["Strategy_Return"] = df["Return"] * df["Position"] - df["Commission"]
+        df["BH_Equity"]       = (1 + df["Return"]).cumprod()
+        df["Strategy_Equity"] = (1 + df["Strategy_Return"]).cumprod()
+    else:
+        equity, bh_eq = 1.0, 1.0
+        equities, bh_equities = [], []
+        position, entry_price = 0, None
+        trail_high, trail_low = None, None
+        partial_done = False
+        prices  = df["Close"].values
+        returns = df["Return"].fillna(0).values
+        for i in range(len(df)):
+            bh_eq  *= (1 + returns[i])
+            new_pos = int(df["Position"].iloc[i])
+            if position == 0 and new_pos != 0:
+                position, entry_price = new_pos, prices[i]
+                trail_high = trail_low = prices[i]
+                partial_done = False
+                equity *= (1 - 0.001)
+            elif position != 0:
+                price = prices[i]
+                if position == 1:
+                    trail_high = max(trail_high, price)
+                    trail_stop = trail_high * (1 - trail_pct)
+                    hit_sl     = price <= entry_price * (1 - sl_pct)
+                    hit_tp     = price >= entry_price * (1 + tp_pct)
+                    hit_trail  = price <= trail_stop
+                else:
+                    trail_low  = min(trail_low, price)
+                    trail_stop = trail_low * (1 + trail_pct)
+                    hit_sl     = price >= entry_price * (1 + sl_pct)
+                    hit_tp     = price <= entry_price * (1 - tp_pct)
+                    hit_trail  = price >= trail_stop
+                if partial_close_pct and not partial_done and hit_tp:
+                    equity      *= (1 + (price/entry_price-1)*position*partial_close_pct - 0.001)
+                    partial_done = True
+                if hit_sl or hit_trail or (hit_tp and not partial_close_pct):
+                    remaining = (1-partial_close_pct) if partial_done and partial_close_pct else 1.0
+                    equity   *= (1 + (price/entry_price-1)*position*remaining - 0.001)
+                    position, entry_price = 0, None
+                else:
+                    equity *= (1 + returns[i] * position)
+            equities.append(equity)
+            bh_equities.append(bh_eq)
+        df["Strategy_Equity"] = equities
+        df["BH_Equity"]       = bh_equities
+        df["Strategy_Return"] = pd.Series(equities).pct_change().fillna(0).values
+    return df
+
+
+# ── Metrics ───────────────────────────────────────────────────
+def metrics(df):
+    r        = df["Strategy_Return"].dropna()
+    sharpe   = r.mean() / r.std() * np.sqrt(252) if r.std() > 0 else 0
+    roll_max = df["Strategy_Equity"].cummax()
+    max_dd   = ((df["Strategy_Equity"] - roll_max) / roll_max).min()
+    win_rate = (r > 0).mean()
+    total_r  = df["Strategy_Equity"].iloc[-1] - 1
+    n_trades = int((df["Position"] != df["Position"].shift(1)).sum() / 2)
+    return sharpe, max_dd, win_rate, total_r, n_trades
+
+
+# ── Chart ─────────────────────────────────────────────────────
+def plot_results(df):
+    ind_cols = [c for c in df.columns if any(
+        c.startswith(p) for p in
+        ["EMA_","SMA_","BB_","RSI_","MACD","Stoch","ATR_","WMA_","VWAP"]
+    )]
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+        vertical_spacing=0.05, row_heights=[0.70, 0.30])
+    fig.add_trace(go.Candlestick(
+        x=df["Open time"], open=df["Open"], high=df["High"],
+        low=df["Low"], close=df["Close"], name="Price",
+        increasing_line_color="#26a69a", decreasing_line_color="#ef5350",
+        increasing_fillcolor="#26a69a", decreasing_fillcolor="#ef5350",
+    ), row=1, col=1)
+    colors = ["#f59e0b","#60a5fa","#a78bfa","#34d399","#f87171"]
+    for i, col in enumerate(ind_cols[:5]):
+        fig.add_trace(go.Scatter(x=df["Open time"], y=df[col],
+            name=col, line=dict(color=colors[i%len(colors)], width=1.5),
+            opacity=0.9), row=1, col=1)
+    long_e = df[df["long_signal"]] if "long_signal" in df.columns and df["long_signal"].any() else df.iloc[0:0]
+    if not long_e.empty:
+        fig.add_trace(go.Scatter(
+            x=long_e["Open time"], y=long_e["Close"]*0.994,
+            mode="markers", name="Long Entry",
+            marker=dict(symbol="triangle-up", size=14, color="#4ade80",
+                       line=dict(color="#166534", width=1))
+        ), row=1, col=1)
+        for date, row in long_e.iterrows():
+            entry = float(row["Close"])
+            sl    = entry * (1 - sl_pct)
+            tp    = entry * (1 + tp_pct)
+            try:
+                end_date = df["Open time"].iloc[min(
+                    df["Open time"].get_loc(date) + 8,
+                    len(df["Open time"]) - 1
+                )]
+            except Exception:
+                end_date = date
+            fig.add_shape(type="line", x0=date, x1=end_date, y0=sl, y1=sl,
+                line=dict(color="#ef4444", width=1.2, dash="dash"), row=1, col=1)
+            fig.add_shape(type="line", x0=date, x1=end_date, y0=tp, y1=tp,
+                line=dict(color="#4ade80", width=1.2, dash="dot"), row=1, col=1)
+            fig.add_annotation(x=end_date, y=sl,
+                text=f"SL {sl_pct*100:.0f}%", showarrow=False,
+                font=dict(color="#ef4444", size=9), xanchor="left", row=1, col=1)
+            fig.add_annotation(x=end_date, y=tp,
+                text=f"TP {tp_pct*100:.0f}%", showarrow=False,
+                font=dict(color="#4ade80", size=9), xanchor="left", row=1, col=1)
+    short_e = df[df["short_signal"]] if "short_signal" in df.columns and df["short_signal"].any() else df.iloc[0:0]
+    if not short_e.empty:
+        fig.add_trace(go.Scatter(
+            x=short_e["Open time"], y=short_e["Close"]*1.006,
+            mode="markers", name="Short Entry",
+            marker=dict(symbol="triangle-down", size=14, color="#f87171",
+                       line=dict(color="#991b1b", width=1))
+        ), row=1, col=1)
+        for date, row in short_e.iterrows():
+            entry = float(row["Close"])
+            sl    = entry * (1 + sl_pct)
+            tp    = entry * (1 - tp_pct)
+            try:
+                end_date = df["Open time"].iloc[min(
+                    df["Open time"].get_loc(date) + 8,
+                    len(df["Open time"]) - 1
+                )]
+            except Exception:
+                end_date = date
+            fig.add_shape(type="line", x0=date, x1=end_date, y0=sl, y1=sl,
+                line=dict(color="#ef4444", width=1.2, dash="dash"), row=1, col=1)
+            fig.add_shape(type="line", x0=date, x1=end_date, y0=tp, y1=tp,
+                line=dict(color="#4ade80", width=1.2, dash="dot"), row=1, col=1)
+    bar_colors = ["#26a69a" if c>=o else "#ef5350"
+                  for c,o in zip(df["Close"],df["Open"])]
+    fig.add_trace(go.Bar(
+        x=df["Open time"], y=df["Volume"],
+        name="Volume", marker_color=bar_colors, opacity=0.6
+    ), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df["Open time"], y=df["Strategy_Equity"],
+        name="Strategy", line=dict(color="#4ade80", width=2)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df["Open time"], y=df["BH_Equity"],
+        name="Buy & Hold", line=dict(color="#64748b", width=1.5, dash="dash")), row=2, col=1)
+    fig.update_layout(
+        height=620,
+        paper_bgcolor="#080a0f", plot_bgcolor="#0d0f14",
+        font=dict(family='IBM Plex Mono', color='#e8e0d0', size=11),
+        legend=dict(bgcolor="#0d0f14", bordercolor="#1e2030",
+                   borderwidth=1, font=dict(color="#e8e0d0", size=10)),
+        xaxis_rangeslider_visible=False,
+        margin=dict(l=50, r=80, t=70, b=40),
+        title=dict(
+            text=f"<b>{symbol}</b> — {summary}<br>"
+            f"<span style='font-size:11px;color:#6b5b3a'>"
+            f"🔺 {n_long} Long  🔻 {n_short} Short  "
+            f"| {{data_source}} | Last 80 bars</span>"
+        ),
+        title_font=dict(color="#f59e0b", size=13),
+    )
+    fig.update_xaxes(gridcolor="#1e2030", zerolinecolor="#1e2030",
+                    tickfont=dict(color="#6b5b3a"))
+    fig.update_yaxes(gridcolor="#1e2030", zerolinecolor="#1e2030",
+                    tickfont=dict(color="#6b5b3a"))
+    return fig
+
+
+# ── Main ─────────────────────────────────────────────────────
+def main():
+    df = fetch_data()
+    if df is None:
+        print("Failed to fetch data.")
+        return
+    df = generate_signals(df)
+    df = backtest(df, {{trail_arg}}, {{partial_arg}})
+    sharpe, max_dd, win_rate, total_r, n_trades = metrics(df)
+    print("=" * 50)
+    print(f"  {summary}")
+    print("=" * 50)
+    print(f"  Sharpe Ratio : {{sharpe:.2f}}")
+    print(f"  Max Drawdown : {{max_dd:.1%}}")
+    print(f"  Win Rate     : {{win_rate:.1%}}")
+    print(f"  Total Return : {{total_r:.1%}}")
+    print(f"  Trades       : {{n_trades}}")
+    print("=" * 50)
+    fig = plot_results(df)
+    fig.show()
+
+if __name__ == "__main__":
+    main()
+'''
+    return code
+
+# ─────────────────────────────────────────────────────────────
+# APP SIGNAL RUNNER
+# Executes the same Groq signal block that goes into the app — chart shows exactly what client gets
+# ─────────────────────────────────────────────────────────────
+def generate_signals(df, strategy, client=None, description=''):
+    """
+    Run Groq signal block on the dataframe for the app chart.
+    Same code as the downloaded backtest — what you see = what you get.
+    """
+    df = df.copy()
+
+    # Initialize safe defaults
+    df['long_signal']  = pd.Series(False, index=df.index)
+    df['short_signal'] = pd.Series(False, index=df.index)
+    df['Signal']       = pd.Series(0, index=df.index)
+
+    if not client or not description:
+        # Fallback: basic signal from parsed strategy
+        p     = strategy.get('indicator_params', {}) or {}
+        stype = strategy.get('strategy_type', 'trend')
+        wants_long  = strategy.get('entry_long')  is not None
+        wants_short = strategy.get('entry_short') is not None
+
+        if 'EMA_fast' in df.columns and 'EMA_slow' in df.columns:
+            if wants_long:
+                df['long_signal'] = (
+                    (df['EMA_fast'] > df['EMA_slow']) &
+                    (df['EMA_fast'].shift(1) <= df['EMA_slow'].shift(1))
+                ).fillna(False)
+            if wants_short:
+                df['short_signal'] = (
+                    (df['EMA_fast'] < df['EMA_slow']) &
+                    (df['EMA_fast'].shift(1) >= df['EMA_slow'].shift(1))
+                ).fillna(False)
+        df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)
+        return df
+
+    # Get Groq signal block
+    signal_block = generate_signal_block(client, description, strategy)
+
+    # Execute signal block in dataframe context
+    # Library functions are in global scope — available here
+    try:
+        exec_globals = {
+            'df': df, 'pd': pd, 'np': np,
+            # inject all library functions
+            'add_ema': add_ema, 'add_sma': add_sma,
+            'add_rsi': add_rsi, 'add_macd': add_macd,
+            'add_bollinger': add_bollinger, 'add_atr': add_atr,
+            'add_stochastic': add_stochastic, 'add_vwap': add_vwap,
+            'add_obv': add_obv, 'add_volume_spike': add_volume_spike,
+            'add_swing_highs_lows': add_swing_highs_lows,
+            'add_candle_patterns': add_candle_patterns,
+            'add_structure_break': add_structure_break,
+            'add_fair_value_gaps': add_fair_value_gaps,
+            'add_liquidity_levels': add_liquidity_levels,
+            'add_order_blocks': add_order_blocks,
+            'add_premium_discount': add_premium_discount,
+            'add_market_structure': add_market_structure,
+            'add_optimal_trade_entry': add_optimal_trade_entry,
+            'add_killzones': add_killzones,
+            'add_previous_day_levels': add_previous_day_levels,
+            'add_weekly_levels': add_weekly_levels,
+            'add_equal_highs_lows': add_equal_highs_lows,
+            'add_support_resistance': add_support_resistance,
+            'crossover': crossover, 'crossunder': crossunder,
+            'above_level': above_level, 'below_level': below_level,
+            'rising': rising, 'falling': falling,
+        }
+        # Remove 4-space indent from signal block for exec
+        clean_block = '\n'.join(
+            line[4:] if line.startswith('    ') else line
+            for line in signal_block.splitlines()
+        )
+        exec(clean_block, exec_globals)
+        df = exec_globals['df']
+
+        # Ensure proper types
+        if 'long_signal' in df.columns:
+            df['long_signal'] = df['long_signal'].fillna(False).astype(bool)
+        if 'short_signal' in df.columns:
+            df['short_signal'] = df['short_signal'].fillna(False).astype(bool)
+        if 'Signal' not in df.columns:
+            df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)
+
+    except Exception as e:
+        st.warning(f"Signal execution error: {e}. Using empty signals.")
+
+    return df
+
+# ─────────────────────────────────────────────────────────────
+# PLOTLY CHART
+# ─────────────────────────────────────────────────────────────
+def draw_chart(df, strategy, symbol, data_source, show='both'):
+    df_plot = df.tail(80).copy()
+    sl_pct  = strategy.get('sl_pct') or 0.02
+    tp_pct  = strategy.get('tp_pct') or 0.06
+    stype   = strategy.get('strategy_type', 'trend')
+    params  = strategy.get('indicator_params', {}) or
