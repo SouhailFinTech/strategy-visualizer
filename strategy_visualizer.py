@@ -62,7 +62,7 @@ html, body, [class*="css"] {
 }
 .tag {
     display: inline-block; padding: 2px 10px; border-radius: 4px;
-    font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; margin: 3px;
+    font-family: 'IBM Plex Mon Mono', monospace; font-size: 0.72rem; margin: 3px;
 }
 .tag-entry { background:#1a2e1a; color:#4ade80; border:1px solid #166534; }
 .tag-sl    { background:#2e1a1a; color:#f87171; border:1px solid #991b1b; }
@@ -121,7 +121,7 @@ def add_sma(df: pd.DataFrame, period: int) -> pd.DataFrame:
 
 def add_wma(df: pd.DataFrame, period: int) -> pd.DataFrame:
     """Weighted Moving Average"""
-    col = f'WMA_{period}'
+    col = f'WMAMA_{period}'
     weights = np.arange(1, period + 1)
     df[col] = df['Close'].rolling(period).apply(
         lambda x: np.dot(x, weights) / weights.sum(), raw=True
@@ -628,168 +628,4 @@ def fetch_binance(symbol: str, period: str):
                         'timestamp','Open','High','Low','Close','Volume',
                         'ct','qv','nt','tbb','tbq','ignore'
                     ])
-                    df['Date'] = pd.to_datetime(df['timestamp'], unit='ms')
-                    df = df.set_index('Date')
-                    df = df[['Open','High','Low','Close','Volume']].astype(float)
-                    return df.dropna()
-            
-            if attempt < 2:
-                time.sleep(2)
-        except:
-            if attempt < 2:
-                time.sleep(2)
-    return None
-
-def fetch_coingecko(symbol: str, days: int):
-    """Fetch from CoinGecko"""
-    api_key = ""
-    try:
-        api_key = st.secrets.get("COINGECKO_API_KEY", "")
-    except:
-        pass
-    headers = {'User-Agent': 'QuantAlpha/1.0'}
-    if api_key:
-        headers['x-cg-demo-api-key'] = api_key
-    try:
-        resp = requests.get(
-            f"https://api.coingecko.com/api/v3/coins/{symbol}/ohlc"
-            f"?vs_currency=usd&days={days}",
-            timeout=15, headers=headers
-        )
-        if resp.status_code != 200:
-            return None
-        data = resp.json()
-        if not data or not isinstance(data, list):
-            return None
-        df = pd.DataFrame(
-            data, columns=['timestamp','Open','High','Low','Close']
-        )
-        df['Date'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df = df.set_index('Date').drop('timestamp', axis=1).astype(float)
-        df['Volume'] = 0.0
-        return df.resample('D').last().dropna()
-    except:
-        return None
-
-def load_csv(uploaded_file):
-    """Load CSV file"""
-    try:
-        import io
-        raw = uploaded_file.read()
-        uploaded_file.seek(0)
-        
-        try:
-            content = raw.decode('utf-8')
-            uploaded_file.seek(0)
-            df = pd.read_csv(uploaded_file)
-            df.columns = [c.strip().title() for c in df.columns]
-            
-            date_col = next(
-                (c for c in ['Date','Datetime','Timestamp','Time','Open Time']
-                 if c in df.columns),
-                None
-            )
-            if date_col is None:
-                try:
-                    pd.to_datetime(df[df.columns[0]].iloc[0])
-                    date_col = df.columns[0]
-                except:
-                    st.error("CSV format not recognized")
-                    return None
-            
-            df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-            df = df.set_index(date_col)
-            df.index.name = 'Date'
-            
-            if 'Volume' not in df.columns:
-                df['Volume'] = 0.0
-            
-            df = df[['Open','High','Low','Close','Volume']].astype(float)
-            return df.dropna().sort_index()
-        except:
-            uploaded_file.seek(0)
-            df = pd.read_csv(uploaded_file)
-            df.columns = [c.strip().title() for c in df.columns]
-            
-
-            for col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-            
-            if 'Date' not in df.columns:
-                if 'Timestamp' in df.columns:
-                    df['Date'] = pd.to_datetime(df['Timestamp'], unit='s')
-                    df = df.drop(columns=['Timestamp'])
-                elif 'Datetime' in df.columns:
-                    df['Date'] = pd.to_datetime(df['Datetime'])
-                    df = df.drop(columns=['Datetime'])
-            
-            if 'Date' in df.columns:
-                df = df.set_index('Date')
-                df.index.name = 'Date'
-            
-            required = ['Open','High','Low','Close']
-            missing = [c for c in required if c not in df.columns]
-            if missing:
-                st.error(f"Missing columns: {missing}")
-                return None
-            
-            if 'Volume' not in df.columns:
-                df['Volume'] = 0.0
-            
-            df = df[['Open','High','Low','Close','Volume']].astype(float)
-            return df.dropna().sort_index()
-    except Exception as e:
-        st.error(f"CSV error: {e}")
-        return None
-
-# ═══════════════════════════════════════════════════════════════
-# GROQ AI HELPERS
-# ═══════════════════════════════════════════════════════════════
-
-def init_llm():
-    try:
-        from groq import Groq
-        GROQ_AVAILABLE = True
-        return Groq(api_key=st.secrets["GROQ_API_KEY"])
-    except:
-        st.error("Groq not available")
-        return None
-
-def parse_strategy(client, description: str):
-    prompt = f"""You are a quantitative trading expert.
-Parse this trading strategy into structured JSON.
-
-Strategy: "{description}"
-
-Return ONLY valid JSON — no markdown, no explanation:
-{{
-  "entry_long": "long entry condition or null if no long",
-  "entry_short": "short entry condition or null if no short",
-  "stop_loss": "stop loss description",
-  "take_profit": "take profit description",
-  "indicators": ["list of indicators"],
-  "strategy_type": "trend or mean-reversion or breakout or momentum",
-  "sl_pct": 0.02,
-  "tp_pct": 0.06,
-  "indicator_params": {{
-    "ema_fast": 20, "ema_slow": 50,
-    "rsi_period": 14, "rsi_overbought": 70, "rsi_oversold": 30
-  }},
-  "summary": "one sentence summary"
-}}
-
-IMPORTANT:
-- If user only says BUY/LONG — set entry_short to null
-- If user only says SELL/SHORT — set entry_long to null
-- Only set both if user explicitly mentions both directions"""
-    
-    try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=600,
-            temperature=0.1
-        )
-        text = response.choices[0].message.content.strip()
-        if '```json' in text:
-            text = text.split('```json')[1].split('```')[0]
+                    df['Date']
