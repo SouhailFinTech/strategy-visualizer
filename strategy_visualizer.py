@@ -101,123 +101,20 @@ html, body, [class*="css"] {
 """, unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════
-# PAGE CONFIG
+# QUANT ALPHA INDICATOR LIBRARY
 # ═══════════════════════════════════════════════════════════════
-st.set_page_config(
-    page_title="Strategy Visualizer | Quant Alpha",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
-# ═══════════════════════════════════════════════════════════════
-# CSS
-# ═══════════════════════════════════════════════════════════════
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Syne:wght@400;600;800&display=swap');
-
-html, body, [class*="css"] {
-    font-family: 'Syne', sans-serif;
-    background-color: #080a0f;
-    color: #e8e0d0;
-}
-.stApp { background-color: #080a0f; }
-
-.main-header {
-    background: linear-gradient(135deg, #0d0f14 0%, #1a1508 100%);
-    border: 1px solid #3d2f00; border-radius: 12px;
-    padding: 28px 32px; margin-bottom: 24px;
-}
-.main-header h1 {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 1.8rem; color: #f59e0b;
-    margin: 0; letter-spacing: -1px;
-}
-.main-header p { color: #6b5b3a; margin: 6px 0 0; font-size: 0.9rem; }
-
-.step-card {
-    background: #0d0f14; border: 1px solid #1e2030;
-    border-radius: 10px; padding: 20px; margin-bottom: 16px;
-}
-.step-card.active { border-color: #f59e0b; }
-.step-card.done   { border-color: #22c55e; }
-.step-num {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.7rem; color: #f59e0b;
-    letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px;
-}
-.parsed-box {
-    background: #0a0c10; border: 1px solid #1e2030;
-    border-left: 4px solid #f59e0b; border-radius: 8px;
-    padding: 16px; font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.8rem; color: #a89060; margin: 12px 0;
-}
-.tag {
-    display: inline-block; padding: 2px 10px; border-radius: 4px;
-    font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; margin: 3px;
-}
-.tag-entry { background:#1a2e1a; color:#4ade80; border:1px solid #166534; }
-.tag-sl    { background:#2e1a1a; color:#f87171; border:1px solid #991b1b; }
-.tag-tp    { background:#1a2a1a; color:#86efac; border:1px solid #15803d; }
-.data-source-box {
-    background:#0a0c10; border:1px solid #1e2030;
-    border-left:4px solid #3b82f6; border-radius:8px;
-    padding:12px 16px; font-family:'IBM Plex Mono',monospace;
-    font-size:0.78rem; color:#60a5fa; margin:8px 0;
-}
-.section-hdr {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.68rem; color: #f59e0b;
-    letter-spacing: 3px; text-transform: uppercase;
-    border-bottom: 1px solid #1e2030; padding-bottom: 8px; margin: 20px 0 14px;
-}
-[data-testid="stSidebar"] {
-    background: #06080c; border-right: 1px solid #1e2030;
-}
-.stButton > button {
-    background: linear-gradient(135deg,#92400e,#b45309);
-    color: #fef3c7; border: none; border-radius: 8px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-weight: 700; padding: 12px 24px; width: 100%;
-    transition: all 0.2s; letter-spacing: 1px;
-}
-.stButton > button:hover {
-    background: linear-gradient(135deg,#b45309,#d97706);
-    transform: translateY(-1px);
-}
-.stTextArea textarea, .stTextInput input {
-    background: #0a0c10 !important; color: #e8e0d0 !important;
-    border: 1px solid #1e2030 !important; border-radius: 8px !important;
-    font-family: 'IBM Plex Mono', monospace !important; font-size: 0.85rem !important;
-}
-#MainMenu, footer, header { visibility: hidden; }
-</style>
-""", unsafe_allow_html=True)
-
-# ═══════════════════════════════════════════════════════════════
-# QUANT ALPHA INDICATOR LIBRARY — internal, tested, always correct
-# ═══════════════════════════════════════════════════════════════
-import pandas as pd
-import numpy as np
-
-# ═══════════════════════════════════════════════════════════════
-# SECTION 1 — TREND INDICATORS
-# ═══════════════════════════════════════════════════════════════
 def add_ema(df: pd.DataFrame, period: int) -> pd.DataFrame:
-    """Exponential Moving Average"""
     col = f'EMA_{period}'
     df[col] = df['Close'].ewm(span=period, adjust=False).mean()
     return df
 
 def add_sma(df: pd.DataFrame, period: int) -> pd.DataFrame:
-    """Simple Moving Average"""
     col = f'SMA_{period}'
     df[col] = df['Close'].rolling(period).mean()
     return df
 
 def add_wma(df: pd.DataFrame, period: int) -> pd.DataFrame:
-    """Weighted Moving Average"""
     col = f'WMA_{period}'
     weights = np.arange(1, period + 1)
     df[col] = df['Close'].rolling(period).apply(
@@ -225,33 +122,25 @@ def add_wma(df: pd.DataFrame, period: int) -> pd.DataFrame:
     return df
 
 def add_vwap(df: pd.DataFrame) -> pd.DataFrame:
-    """Volume Weighted Average Price (daily reset)"""
     df['VWAP'] = (df['Close'] * df['Volume']).cumsum() / df['Volume'].cumsum()
     return df
 
-def add_macd(df: pd.DataFrame,
-             fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
-    """MACD — Line, Signal, Histogram"""
-    ema_fast        = df['Close'].ewm(span=fast,   adjust=False).mean()
-    ema_slow        = df['Close'].ewm(span=slow,   adjust=False).mean()
-    df['MACD']      = ema_fast - ema_slow
-    df['MACD_Signal']= df['MACD'].ewm(span=signal, adjust=False).mean()
+def add_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
+    ema_fast = df['Close'].ewm(span=fast, adjust=False).mean()
+    ema_slow = df['Close'].ewm(span=slow, adjust=False).mean()
+    df['MACD'] = ema_fast - ema_slow
+    df['MACD_Signal'] = df['MACD'].ewm(span=signal, adjust=False).mean()
     df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
     return df
 
-def add_supertrend(df: pd.DataFrame,
-                   period: int = 10, multiplier: float = 3.0) -> pd.DataFrame:
-    """Supertrend indicator"""
+def add_supertrend(df: pd.DataFrame, period: int = 10, multiplier: float = 3.0) -> pd.DataFrame:
     df = add_atr(df, period)
     atr = df[f'ATR_{period}']
     hl2 = (df['High'] + df['Low']) / 2
-
     upper = hl2 + multiplier * atr
     lower = hl2 - multiplier * atr
-
     supertrend = pd.Series(index=df.index, dtype=float)
-    direction  = pd.Series(index=df.index, dtype=int)
-
+    direction = pd.Series(index=df.index, dtype=int)
     for i in range(1, len(df)):
         if df['Close'].iloc[i] > upper.iloc[i-1]:
             direction.iloc[i] = 1
@@ -265,67 +154,52 @@ def add_supertrend(df: pd.DataFrame,
                 lower.iloc[i] = lower.iloc[i-1]
             if direction.iloc[i] == -1 and upper.iloc[i] > upper.iloc[i-1]:
                 upper.iloc[i] = upper.iloc[i-1]
-
             supertrend.iloc[i] = lower.iloc[i] if direction.iloc[i] == 1 else upper.iloc[i]
-
-    df['Supertrend']           = supertrend
+    df['Supertrend'] = supertrend
     df['Supertrend_Direction'] = direction
     return df
 
-# ═══════════════════════════════════════════════════════════════
-# SECTION 2 — MOMENTUM INDICATORS
-# ═══════════════════════════════════════════════════════════════
 def add_rsi(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
-    """Relative Strength Index"""
-    col   = f'RSI_{period}'
+    col = f'RSI_{period}'
     delta = df['Close'].diff()
-    gain  = delta.clip(lower=0).rolling(period).mean()
-    loss  = (-delta.clip(upper=0)).rolling(period).mean()
-    rs    = gain / loss.replace(0, np.nan)
+    gain = delta.clip(lower=0).rolling(period).mean()
+    loss = (-delta.clip(upper=0)).rolling(period).mean()
+    rs = gain / loss.replace(0, np.nan)
     df[col] = 100 - (100 / (1 + rs))
     return df
 
-def add_stochastic(df: pd.DataFrame,
-                   k_period: int = 14, d_period: int = 3) -> pd.DataFrame:
-    """Stochastic Oscillator %K and %D"""
-    low_min  = df['Low'].rolling(k_period).min()
+def add_stochastic(df: pd.DataFrame, k_period: int = 14, d_period: int = 3) -> pd.DataFrame:
+    low_min = df['Low'].rolling(k_period).min()
     high_max = df['High'].rolling(k_period).max()
     df['Stoch_K'] = 100 * (df['Close'] - low_min) / (high_max - low_min)
     df['Stoch_D'] = df['Stoch_K'].rolling(d_period).mean()
     return df
 
 def add_cci(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
-    """Commodity Channel Index"""
-    tp          = (df['High'] + df['Low'] + df['Close']) / 3
-    sma_tp      = tp.rolling(period).mean()
-    mad         = tp.rolling(period).apply(lambda x: np.abs(x - x.mean()).mean())
+    tp = (df['High'] + df['Low'] + df['Close']) / 3
+    sma_tp = tp.rolling(period).mean()
+    mad = tp.rolling(period).apply(lambda x: np.abs(x - x.mean()).mean())
     df[f'CCI_{period}'] = (tp - sma_tp) / (0.015 * mad)
     return df
 
 def add_williams_r(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
-    """Williams %R"""
     high_max = df['High'].rolling(period).max()
-    low_min  = df['Low'].rolling(period).min()
+    low_min = df['Low'].rolling(period).min()
     df[f'WR_{period}'] = -100 * (high_max - df['Close']) / (high_max - low_min)
     return df
 
 def add_mfi(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
-    """Money Flow Index"""
     tp = (df['High'] + df['Low'] + df['Close']) / 3
     mf = tp * df['Volume']
-    pos_mf    = mf.where(tp > tp.shift(1), 0).rolling(period).sum()
-    neg_mf    = mf.where(tp < tp.shift(1), 0).rolling(period).sum()
-    mfr       = pos_mf / neg_mf.replace(0, np.nan)
+    pos_mf = mf.where(tp > tp.shift(1), 0).rolling(period).sum()
+    neg_mf = mf.where(tp < tp.shift(1), 0).rolling(period).sum()
+    mfr = pos_mf / neg_mf.replace(0, np.nan)
     df[f'MFI_{period}'] = 100 - (100 / (1 + mfr))
     return df
 
-# ═══════════════════════════════════════════════════════════════
-# SECTION 3 — VOLATILITY INDICATORS
-# ═══════════════════════════════════════════════════════════════
 def add_atr(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
-    """Average True Range"""
-    col  = f'ATR_{period}'
-    tr   = pd.concat([
+    col = f'ATR_{period}'
+    tr = pd.concat([
         df['High'] - df['Low'],
         (df['High'] - df['Close'].shift(1)).abs(),
         (df['Low'] - df['Close'].shift(1)).abs()
@@ -333,137 +207,104 @@ def add_atr(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
     df[col] = tr.ewm(span=period, adjust=False).mean()
     return df
 
-def add_bollinger(df: pd.DataFrame,
-                  period: int = 20, std_dev: float = 2.0) -> pd.DataFrame:
-    """Bollinger Bands"""
-    df['BB_Mid']   = df['Close'].rolling(period).mean()
-    std            = df['Close'].rolling(period).std()
+def add_bollinger(df: pd.DataFrame, period: int = 20, std_dev: float = 2.0) -> pd.DataFrame:
+    df['BB_Mid'] = df['Close'].rolling(period).mean()
+    std = df['Close'].rolling(period).std()
     df['BB_Upper'] = df['BB_Mid'] + std_dev * std
     df['BB_Lower'] = df['BB_Mid'] - std_dev * std
     df['BB_Width'] = (df['BB_Upper'] - df['BB_Lower']) / df['BB_Mid']
-    df['BB_Pct']   = (df['Close'] - df['BB_Lower']) / (df['BB_Upper'] - df['BB_Lower'])
+    df['BB_Pct'] = (df['Close'] - df['BB_Lower']) / (df['BB_Upper'] - df['BB_Lower'])
     return df
 
-def add_keltner(df: pd.DataFrame,
-                ema_period: int = 20, atr_period: int = 10,
-                multiplier: float = 2.0) -> pd.DataFrame:
-    """Keltner Channels"""
+def add_keltner(df: pd.DataFrame, ema_period: int = 20, atr_period: int = 10, multiplier: float = 2.0) -> pd.DataFrame:
     df = add_atr(df, atr_period)
-    df['KC_Mid']   = df['Close'].ewm(span=ema_period, adjust=False).mean()
+    df['KC_Mid'] = df['Close'].ewm(span=ema_period, adjust=False).mean()
     df['KC_Upper'] = df['KC_Mid'] + multiplier * df[f'ATR_{atr_period}']
     df['KC_Lower'] = df['KC_Mid'] - multiplier * df[f'ATR_{atr_period}']
     return df
 
 def add_donchian(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
-    """Donchian Channels"""
     df[f'DC_Upper_{period}'] = df['High'].rolling(period).max()
     df[f'DC_Lower_{period}'] = df['Low'].rolling(period).min()
-    df[f'DC_Mid_{period}']   = (df[f'DC_Upper_{period}'] + df[f'DC_Lower_{period}']) / 2
+    df[f'DC_Mid_{period}'] = (df[f'DC_Upper_{period}'] + df[f'DC_Lower_{period}']) / 2
     return df
 
-# ═══════════════════════════════════════════════════════════════
-# SECTION 4 — VOLUME INDICATORS
-# ═══════════════════════════════════════════════════════════════
 def add_obv(df: pd.DataFrame) -> pd.DataFrame:
-    """On-Balance Volume"""
-    direction  = np.sign(df['Close'].diff())
-    df['OBV']  = (direction * df['Volume']).fillna(0).cumsum()
+    direction = np.sign(df['Close'].diff())
+    df['OBV'] = (direction * df['Volume']).fillna(0).cumsum()
     return df
 
 def add_volume_sma(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
-    """Volume Simple Moving Average"""
     df[f'Vol_SMA_{period}'] = df['Volume'].rolling(period).mean()
     return df
 
 def add_cmf(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
-    """Chaikin Money Flow"""
-    clv       = ((df['High'] + df['Low']) / 2 - df['Close']) / (df['High'] - df['Low'])
+    clv = ((df['High'] + df['Low']) / 2 - df['Close']) / (df['High'] - df['Low'])
     df['CMF'] = (clv * df['Volume']).rolling(period).sum() / df['Volume'].rolling(period).sum()
     return df
 
-def add_volume_spike(df: pd.DataFrame,
-                     period: int = 20, multiplier: float = 2.0) -> pd.DataFrame:
-    """Volume Spike — True when volume is X times the average"""
+def add_volume_spike(df: pd.DataFrame, period: int = 20, multiplier: float = 2.0) -> pd.DataFrame:
     df = add_volume_sma(df, period)
     df['Volume_Spike'] = df['Volume'] > (multiplier * df[f'Vol_SMA_{period}'])
     return df
 
-# ═══════════════════════════════════════════════════════════════
-# SECTION 5 — PRICE ACTION
-# ═══════════════════════════════════════════════════════════════
 def add_swing_highs_lows(df: pd.DataFrame, lookback: int = 5) -> pd.DataFrame:
-    """Swing Highs and Lows"""
     df['Swing_High'] = False
-    df['Swing_Low']  = False
-
+    df['Swing_Low'] = False
     for i in range(lookback, len(df) - lookback):
         window_high = df['High'].iloc[i-lookback:i+lookback+1]
-        window_low  = df['Low'].iloc[i-lookback:i+lookback+1]
+        window_low = df['Low'].iloc[i-lookback:i+lookback+1]
         if df['High'].iloc[i] == window_high.max():
             df['Swing_High'].iloc[i] = True
         if df['Low'].iloc[i] == window_low.min():
             df['Swing_Low'].iloc[i] = True
-
     return df
 
-def add_higher_highs_lower_lows(df: pd.DataFrame,
-                                  lookback: int = 5) -> pd.DataFrame:
-    """Higher Highs, Higher Lows, Lower Highs, Lower Lows"""
+def add_higher_highs_lower_lows(df: pd.DataFrame, lookback: int = 5) -> pd.DataFrame:
     df = add_swing_highs_lows(df, lookback)
     swing_h = df[df['Swing_High']]['High']
     swing_l = df[df['Swing_Low']]['Low']
-
     df['HH'] = False
     df['HL'] = False
     df['LH'] = False
     df['LL'] = False
-
     prev_h = swing_h.shift(1).reindex(df.index).ffill()
     prev_l = swing_l.shift(1).reindex(df.index).ffill()
-
     df.loc[df['Swing_High'], 'HH'] = df.loc[df['Swing_High'], 'High'] > prev_h[df['Swing_High']]
     df.loc[df['Swing_High'], 'LH'] = df.loc[df['Swing_High'], 'High'] < prev_h[df['Swing_High']]
     df.loc[df['Swing_Low'], 'HL'] = df.loc[df['Swing_Low'], 'Low'] > prev_l[df['Swing_Low']]
     df.loc[df['Swing_Low'], 'LL'] = df.loc[df['Swing_Low'], 'Low'] < prev_l[df['Swing_Low']]
-
     return df
 
 def add_candle_patterns(df: pd.DataFrame) -> pd.DataFrame:
-    """Candlestick patterns"""
-    body      = df['Close'] - df['Open']
-    body_abs  = body.abs()
+    body = df['Close'] - df['Open']
+    body_abs = body.abs()
     upper_wick = df['High'] - df[['Open','Close']].max(axis=1)
     lower_wick = df[['Open','Close']].min(axis=1) - df['Low']
     candle_range = df['High'] - df['Low']
-
     df['Bullish_Engulfing'] = (
         (df['Close'] > df['Open']) &
         (df['Open'].shift(1) > df['Close'].shift(1)) &
         (df['Close'] > df['Open'].shift(1)) &
         (df['Open'] < df['Close'].shift(1))
     )
-
     df['Bearish_Engulfing'] = (
         (df['Close'] < df['Open']) &
         (df['Open'].shift(1) < df['Close'].shift(1)) &
         (df['Close'] < df['Open'].shift(1)) &
         (df['Open'] > df['Close'].shift(1))
     )
-
     df['Doji'] = body_abs < (0.1 * candle_range)
-
     df['Hammer'] = (
         (lower_wick > 2 * body_abs) &
         (upper_wick < body_abs) &
         (candle_range > 0)
     )
-
     df['Shooting_Star'] = (
         (upper_wick > 2 * body_abs) &
         (lower_wick < body_abs) &
         (candle_range > 0)
     )
-
     df['Bullish_Pin_Bar'] = (
         (lower_wick > 2 * body_abs) &
         (lower_wick > upper_wick * 2)
@@ -472,11 +313,9 @@ def add_candle_patterns(df: pd.DataFrame) -> pd.DataFrame:
         (upper_wick > 2 * body_abs) &
         (upper_wick > lower_wick * 2)
     )
-
     return df
 
 def add_inside_outside_bars(df: pd.DataFrame) -> pd.DataFrame:
-    """Inside Bar and Outside Bar patterns"""
     df['Inside_Bar'] = (
         (df['High'] <= df['High'].shift(1)) &
         (df['Low'] >= df['Low'].shift(1))
@@ -487,26 +326,17 @@ def add_inside_outside_bars(df: pd.DataFrame) -> pd.DataFrame:
     )
     return df
 
-def add_support_resistance(df: pd.DataFrame,
-                            lookback: int = 20) -> pd.DataFrame:
-    """Rolling support and resistance levels"""
+def add_support_resistance(df: pd.DataFrame, lookback: int = 20) -> pd.DataFrame:
     df[f'Resistance_{lookback}'] = df['High'].rolling(lookback).max()
-    df[f'Support_{lookback}']    = df['Low'].rolling(lookback).min()
+    df[f'Support_{lookback}'] = df['Low'].rolling(lookback).min()
     return df
 
-# ═══════════════════════════════════════════════════════════════
-# SECTION 6 — SMC (Smart Money Concepts)
-# ═══════════════════════════════════════════════════════════════
 def add_structure_break(df: pd.DataFrame, lookback: int = 10) -> pd.DataFrame:
-    """Break of Structure (BOS) and Change of Character (CHoCH)"""
     df = add_swing_highs_lows(df, lookback)
-
     last_swing_high = df['High'].where(df['Swing_High']).ffill().shift(1)
-    last_swing_low  = df['Low'].where(df['Swing_Low']).ffill().shift(1)
-
+    last_swing_low = df['Low'].where(df['Swing_Low']).ffill().shift(1)
     df['BOS_Bullish'] = df['Close'] > last_swing_high
     df['BOS_Bearish'] = df['Close'] < last_swing_low
-
     df['CHoCH_Bullish'] = (
         df['BOS_Bullish'] &
         ~df['BOS_Bullish'].shift(1).fillna(False)
@@ -515,57 +345,42 @@ def add_structure_break(df: pd.DataFrame, lookback: int = 10) -> pd.DataFrame:
         df['BOS_Bearish'] &
         ~df['BOS_Bearish'].shift(1).fillna(False)
     )
-
     return df
 
-
 def add_order_blocks(df: pd.DataFrame, lookback: int = 10) -> pd.DataFrame:
-    """Order Blocks"""
     df = add_structure_break(df, lookback)
-
     df['Bullish_OB'] = False
     df['Bearish_OB'] = False
-
     for i in range(1, len(df)):
         if df['CHoCH_Bullish'].iloc[i]:
             j = i - 1
             while j >= 0:
-                if df['Open'].iloc[j] < df['Close'].iloc[j]:  # bearish candle
+                if df['Open'].iloc[j] < df['Close'].iloc[j]:
                     df['Bullish_OB'].iloc[j] = True
                     break
                 j -= 1
-
         if df['CHoCH_Bearish'].iloc[i]:
             j = i - 1
             while j >= 0:
-                if df['Open'].iloc[j] > df['Close'].iloc[j]:  # bullish candle
+                if df['Open'].iloc[j] > df['Close'].iloc[j]:
                     df['Bearish_OB'].iloc[j] = True
                     break
                 j -= 1
-
     return df
-
 
 def add_fair_value_gaps(df: pd.DataFrame) -> pd.DataFrame:
-    """Fair Value Gaps / Imbalances"""
     df['FVG_Bullish'] = df['Low'].shift(2) > df['High'].shift(1)
     df['FVG_Bearish'] = df['High'].shift(2) < df['Low'].shift(1)
-
-    df['FVG_Bull_Low']  = df['High'].shift(2).where(df['FVG_Bullish'])
+    df['FVG_Bull_Low'] = df['High'].shift(2).where(df['FVG_Bullish'])
     df['FVG_Bull_High'] = df['Low'].shift(1).where(df['FVG_Bullish'])
     df['FVG_Bear_High'] = df['Low'].shift(2).where(df['FVG_Bearish'])
-    df['FVG_Bear_Low']  = df['High'].shift(1).where(df['FVG_Bearish'])
-
+    df['FVG_Bear_Low'] = df['High'].shift(1).where(df['FVG_Bearish'])
     return df
 
-
 def add_liquidity_levels(df: pd.DataFrame, lookback: int = 20) -> pd.DataFrame:
-    """Liquidity pools"""
     df = add_swing_highs_lows(df, 5)
-
     df['BSL'] = df['High'].where(df['Swing_High']).rolling(lookback).max()
     df['SSL'] = df['Low'].where(df['Swing_Low']).rolling(lookback).min()
-
     df['BSL_Sweep'] = (
         (df['High'] > df['BSL'].shift(1)) &
         (df['Close'] < df['BSL'].shift(1))
@@ -574,95 +389,64 @@ def add_liquidity_levels(df: pd.DataFrame, lookback: int = 20) -> pd.DataFrame:
         (df['Low'] < df['SSL'].shift(1)) &
         (df['Close'] > df['SSL'].shift(1))
     )
-
     return df
 
-
 def add_premium_discount(df: pd.DataFrame, lookback: int = 50) -> pd.DataFrame:
-    """Premium and Discount zones"""
     range_high = df['High'].rolling(lookback).max()
-    range_low  = df['Low'].rolling(lookback).min()
-    midpoint   = (range_high + range_low) / 2
-
+    range_low = df['Low'].rolling(lookback).min()
+    midpoint = (range_high + range_low) / 2
     df['In_Premium'] = df['Close'] > midpoint
     df['In_Discount'] = df['Close'] < midpoint
     df['Range_50pct'] = midpoint
-
     return df
 
-# ═══════════════════════════════════════════════════════════════
-# SECTION 7 — ICT CONCEPTS
-# ═══════════════════════════════════════════════════════════════
-def add_market_structure(df: pd.DataFrame,
-                          lookback: int = 10) -> pd.DataFrame:
-    """ICT Market Structure"""
+def add_market_structure(df: pd.DataFrame, lookback: int = 10) -> pd.DataFrame:
     df = add_higher_highs_lower_lows(df, lookback)
-
     df['Bullish_Structure'] = df['HH'] | df['HL']
     df['Bearish_Structure'] = df['LH'] | df['LL']
-
     return df
 
-
-def add_optimal_trade_entry(df: pd.DataFrame,
-                             lookback: int = 20) -> pd.DataFrame:
-    """ICT Optimal Trade Entry"""
+def add_optimal_trade_entry(df: pd.DataFrame, lookback: int = 20) -> pd.DataFrame:
     df = add_swing_highs_lows(df, lookback // 4)
-
     swing_h = df['High'].where(df['Swing_High']).ffill()
     swing_l = df['Low'].where(df['Swing_Low']).ffill()
-
     fib_618 = swing_h - 0.618 * (swing_h - swing_l)
     fib_786 = swing_h - 0.786 * (swing_h - swing_l)
-
     df['In_OTE_Bullish'] = (
         (df['Close'] >= fib_786) &
         (df['Close'] <= fib_618)
     )
-
     fib_618_bear = swing_l + 0.618 * (swing_h - swing_l)
     fib_786_bear = swing_l + 0.786 * (swing_h - swing_l)
-
     df['In_OTE_Bearish'] = (
         (df['Close'] <= fib_786_bear) &
         (df['Close'] >= fib_618_bear)
     )
-
     return df
-
 
 def add_killzones(df: pd.DataFrame) -> pd.DataFrame:
-    """ICT Killzones"""
     h = df.index.hour
-    df['London_KZ']   = (h >= 2) & (h < 5)
-    df['NewYork_KZ']  = (h >= 7) & (h < 10)
+    df['London_KZ'] = (h >= 2) & (h < 5)
+    df['NewYork_KZ'] = (h >= 7) & (h < 10)
     df['LondonClose_KZ'] = (h >= 10) & (h < 12)
-    df['Asian_KZ']    = (h >= 20) | (h < 1)
+    df['Asian_KZ'] = (h >= 20) | (h < 1)
     return df
 
-
 def add_previous_day_levels(df: pd.DataFrame) -> pd.DataFrame:
-    """Previous Day High, Low, Close"""
     df['PDH'] = df['High'].shift(1)
     df['PDL'] = df['Low'].shift(1)
     df['PDC'] = df['Close'].shift(1)
     return df
 
-
 def add_weekly_levels(df: pd.DataFrame) -> pd.DataFrame:
-    """Previous Week High and Low"""
     df['Week'] = df.index.to_series().dt.isocalendar().week
-    df['PWH']  = df.groupby('Week')['High'].transform('max').shift(1)
-    df['PWL']  = df.groupby('Week')['Low'].transform('min').shift(1)
+    df['PWH'] = df.groupby('Week')['High'].transform('max').shift(1)
+    df['PWL'] = df.groupby('Week')['Low'].transform('min').shift(1)
     df = df.drop(columns=['Week'])
     return df
 
-
-def add_equal_highs_lows(df: pd.DataFrame,
-                          tolerance: float = 0.001) -> pd.DataFrame:
-    """Equal Highs (EQH) and Equal Lows (EQL)"""
+def add_equal_highs_lows(df: pd.DataFrame, tolerance: float = 0.001) -> pd.DataFrame:
     df = add_swing_highs_lows(df, 5)
-
     df['EQH'] = (
         df['Swing_High'] &
         (abs(df['High'] - df['High'].shift(1)) / df['High'].shift(1) < tolerance)
@@ -671,379 +455,76 @@ def add_equal_highs_lows(df: pd.DataFrame,
         df['Swing_Low'] &
         (abs(df['Low'] - df['Low'].shift(1)) / df['Low'].shift(1) < tolerance)
     )
-
     return df
 
-# ═══════════════════════════════════════════════════════════════
-# SECTION 8 — SIGNAL HELPERS (crossovers, thresholds)
-# ═══════════════════════════════════════════════════════════════
 def crossover(series_a: pd.Series, series_b: pd.Series) -> pd.Series:
-    """Returns True on the bar where series_a crosses ABOVE series_b"""
     return (series_a > series_b) & (series_a.shift(1) <= series_b.shift(1))
 
 def crossunder(series_a: pd.Series, series_b: pd.Series) -> pd.Series:
-    """Returns True on the bar where series_a crosses BELOW series_b"""
     return (series_a < series_b) & (series_a.shift(1) >= series_b.shift(1))
 
 def above_level(series: pd.Series, level: float) -> pd.Series:
-    """Returns True when series crosses above a fixed level"""
     return (series > level) & (series.shift(1) <= level)
 
 def below_level(series: pd.Series, level: float) -> pd.Series:
-    """Returns True when series crosses below a fixed level"""
     return (series < level) & (series.shift(1) >= level)
 
 def rising(series: pd.Series, periods: int = 1) -> pd.Series:
-    """Returns True when series is rising over N periods"""
     return series > series.shift(periods)
 
 def falling(series: pd.Series, periods: int = 1) -> pd.Series:
-    """Returns True when series is falling over N periods"""
     return series < series.shift(periods)
 
 # ═══════════════════════════════════════════════════════════════
-# LIBRARY REFERENCE — for AI prompt context
+# CONSTANTS
 # ═══════════════════════════════════════════════════════════════
-LIBRARY_REFERENCE = """
-AVAILABLE INDICATOR FUNCTIONS (all tested, all correct):
+BINANCE_SYMBOLS = {
+    'BTC': 'BTCUSDT', 'ETH': 'ETHUSDT', 'SOL': 'SOLUSDT',
+    'BNB': 'BNBUSDT', 'XRP': 'XRPUSDT', 'ADA': 'ADAUSDT',
+    'DOGE': 'DOGEUSDT', 'AVAX': 'AVAXUSDT', 'MATIC': 'MATICUSDT',
+    'LINK': 'LINKUSDT', 'DOT': 'DOTUSDT', 'UNI': 'UNIUSDT',
+    'LTC': 'LTCUSDT', 'ATOM': 'ATOMUSDT', 'NEAR': 'NEARUSDT',
+}
 
-TREND:
-- add_ema(df, period)        → df['EMA_20'], df['EMA_50'], etc.
-- add_sma(df, period)        → df['SMA_20']
-- add_wma(df, period)        → df['WMA_20']
-- add_vwap(df)               → df['VWAP']
-- add_macd(df, 12, 26, 9)    → df['MACD'], df['MACD_Signal'], df['MACD_Hist']
-- add_supertrend(df, 10, 3.0)   → df['Supertrend'], df['Supertrend_Direction']
+COINGECKO_IDS = {
+    'BTC': 'bitcoin', 'ETH': 'ethereum', 'SOL': 'solana',
+    'BNB': 'binancecoin', 'XRP': 'ripple', 'ADA': 'cardano',
+    'DOGE': 'dogecoin', 'AVAX': 'avalanche-2', 'MATIC': 'matic-network',
+    'LINK': 'chainlink', 'DOT': 'polkadot', 'UNI': 'uniswap',
+    'LTC': 'litecoin', 'ATOM': 'cosmos', 'NEAR': 'near',
+}
 
-MOMENTUM:
-- add_rsi(df, 14)               → df['RSI_14']
-- add_stochastic(df, 14, 3)     → df['Stoch_K'], df['Stoch_D']
-- add_cci(df, 20)               → df['CCI_20']
-- add_williams_r(df, 14)        → df['WR_14']
-- add_mfi(df, 14)               → df['MFI_14']
-
-VOLATILITY:
-- add_atr(df, 14)               → df['ATR_14']
-- add_bollinger(df, 20, 2.0)    → df['BB_Upper'], df['BB_Lower'], df['BB_Mid']
-- add_keltner(df, 20, 10, 2.0)  → df['KC_Upper'], df['KC_Lower'], df['KC_Mid']
-- add_donchian(df, 20)          → df['DC_Upper_20'], df['DC_Lower_20']
-
-VOLUME:
-- add_obv(df)                    → df['OBV']
-- add_volume_sma(df, 20)        → df['Vol_SMA_20']
-- add_cmf(df, 20)               → df['CMF']
-- add_volume_spike(df, 20, 2.0) → df['Volume_Spike'] (bool)
-
-PRICE ACTION:
-- add_swing_highs_lowsows(df, 5)   → df['Swing_High'], df['Swing_Low'] (bool)
-- add_candle_patterns(df)       → df['Bullish_Engulfing'], df['Bearish_Engulfing'], df['Hammer'], df['Shooting_Star'], df['Bullish_Pin_Bar'], df['Bearish_Pin_Bar'], df['Doji']
-- add_inside_outside_bars(df)   → df['Inside_Bar'], df['Outside_Bar']
-- add_support_resistance(df,20) → df['Resistance_20'], df['Support_20']
-- add_higher_highs_lower_lows(df,5) → df['HH'], df['HL'], df['LH'], df['LL']
-
-SMC (Smart Money Concepts):
-- add_structure_break(df, 10)   → df['BOS_Bullish'], df['BOS_Bearish'], df['CHoCH_Bullish'], df['CHoCH_Bearish']
-- add_order_blocks(df, 10)      → df['Bullish_OB'], df['Bearish_OB']
-- add_fair_value_gaps(df)       → df['FVG_Bullish'], df['FVG_Bearish']
-- add_liquidity_levels(df, 20)  → df['BSL'], df['SSL'], df['BSL_Sweep'], df['SSL_Sweep']
-- add_premium_discount(df, 50)  → df['In_Premium'], df['In_Discount'], df['Range_50pct']
-
-ICT:
-- add_market_structure(df, 10) → df['Bullish_Structure'], df['Bearish_Structure']
-- add_optimal_trade_entry(df, 20) → df['In_OTE_Bullish'], df['In_OTE_Bearish']
-- add_killzones(df)             → df['London_KZ'], df['NewYork_KZ'], df['LondonClose_KZ'], df['Asian_KZ']
-- add_previous_day_levels(df)   → df['PDH'], df['PDL'], df['PDC']
-- add_weekly_levels(df)         → df['PWH'], df['PWL']
-- add_equal_highs_lows(df, 0.001) → df['EQH'], df['EQL']
-
-SIGNAL HELPERS (return boolean Series):
-- crossover(series_a, series_b)  → True when a crosses above b
-- crossunder(series_a, series_b) → True when a crosses below b
-- above_level(series, level)    → True when series crosses above fixed level
-- below_level(series, level)    → True when series crosses below fixed level
-- rising(series, periods)       → True when series is rising
-- falling(series, periods)      → True when series is falling
-
-CONVENIENCE:
-- add_common_indicators(df)     → adds EMA 9/20/50/200, SMA 20/50, RSI, MACD, BB, ATR, OBV, swings, candles
-- add_smc_indicators(df)        → adds all SMC/ICT indicators
-
-EXAMPLE SIGNALS:
-- EMA crossover long:  crossover(df['EMA_20'], df['EMA_50'])
-- RSI oversold:        below_level(df['RSI_14'], 30)
-- Bullish engulfing:   df['Bullish_Engulfing']
-- Liquidity sweep up:  df['SSL_Sweep']
-- FVG entry:           df['FVG_Bullish'] & df['In_Discount']
-- ICT OTE entry:       df['In_OTE_Bullish'] & df['Bullish_Structure']
-- SMC full setup:      df['CHoCH_Bullish'] & df['In_Discount'] & df['FVG_Bullish']
-"""
-
-# ═══════════════════════════════════════════════════════════════
-# HELPER FUNCTIONS
-# ═══════════════════════════════════════════════════════════════
-def fetch_binance(symbol: str, period: str):
-    """Fetch from Binance with 3 retries"""
-    sym   = symbol.upper()
-    limit = 90
-    if not sym:
-        return None
-
-    import time
-    for attempt in range(3):
-        try:
-            resp = requests.get(
-                "https://api.binance.com/api/v3/klines",
-                params={'symbol': sym, 'interval': '1d', 'limit': min(limit, 1000)},
-                timeout=15
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                if data:
-                    df = pd.DataFrame(data, columns=[
-                        'timestamp','Open','High','Low','Close','Volume',
-                        'ct','qv','nt','tbb','tbq','ignore'
-                    ])
-                    df['Date'] = pd.to_datetime(df['timestamp'], unit="ms")
-                    df = df[['Open','High','Low','Close','Volume']].astype(float)
-                    return df.dropna().sort_index()
-            # Wait before retry
-            if attempt < 2:
-                time.sleep(2)
-        except Exception:
-            if attempt < 2:
-                time.sleep(2)
-    return None
-
-
-def fetch_coingecko(symbol: str, days: int):
-    """Fetch from CoinGecko free API"""
-    coin_id = COINGECKO_IDS.get(symbol.upper(), symbol.lower())
-    api_key = ""
-    try:
-        api_key = st.secrets.get("COINGECKO_API_KEY", "")
-    except Exception:
-        pass
-    headers = {'User-Agent': 'QuantAlpha/1.0'}
-    if api_key:
-        headers['x-cg-demo-api-key'] = api_key
-    try:
-        resp = requests.get(
-            f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc"
-            f"?vs_currency=usd&days={days}",
-            timeout=15, headers=headers
-        )
-        if resp.status_code != 200:
-            return None
-        data = resp.json()
-        if not data or not isinstance(data, list):
-            return None
-        df = pd.DataFrame(
-            data, columns=['timestamp','Open','High','Low','Close']
-        )
-        df['Date'] = pd.to_datetime(df['timestamp'], unit="ms")
-        df = df.set_index('Date').drop('timestamp', axis=1).astype(float)
-        df['Volume'] = 0.0
-        return df.resample('D').last().dropna()
-    except Exception:
-        return None
-
-
-def load_csv(uploaded_file):
-    """
-    Load CSV — supports multiple formats:
-    1. MT5 format: tab-separated, date+time columns, 2023.01.01 date format
-    2. Standard format: Date/Open/High/Low/Close columns
-    3. Any reasonable OHLC CSV
-    """
-    import io
-
-    try:
-        # Read raw bytes first to detect format
-        raw = uploaded_file.read()
-        uploaded_file.seek(0)
-
-        # ── Try MT5 format first ──────────────────────────────
-        # MT5 exports: <DATE>\t<TIME>\t<OPEN>\t<HIGH>\t<LOW>\t<CLOSE>\t...
-        # With a header row that starts with <
-        try:
-            content = raw.decode('utf-8')
-            lines   = content.strip().split('\n')
-
-            # Detect MT5 by checking if first line has <DATE> or tab-separated
-            is_mt5 = ('<DATE>' in lines[0] or
-                      '\t' in lines[0] or
-                      lines[0].startswith('<'))
-
-            if is_mt5:
-                # Remove angle brackets from headers
-                header = lines[0].replace('<','').replace('>','').strip()
-                cols   = [c.strip().lower() for c in header.split('\t')]
-
-                rows = []
-                for line in lines[1:]:
-                    if line.strip():
-                        rows.append(line.strip().split('\t'))
-
-                df = pd.DataFrame(rows, columns=cols)
-
-                # MT5 has separate date and time columns
-                if 'date' in cols and 'time' in cols:
-                    df['datetime'] = pd.to_datetime(
-                        df['date'] + ' ' + df['time'],
-                        format='%Y.%m.%d %H:%M:%S',
-                        errors='coerce'
-                    )
-                    # Fallback format without seconds
-                    mask = df['datetime'].isna()
-                    if mask.any():
-                        df.loc[mask, 'datetime'] = pd.to_datetime(
-                            df.loc[mask,'date'] + ' ' + df.loc[mask,'time'],
-                            format='%Y.%m.%d %H:%M',
-                            errors='coerce'
-                        )
-                    df = df.set_index('datetime')
-                elif 'date' in cols:
-                    df.index = pd.to_datetime(
-                        df['date'], format='%Y.%m.%d', errors='coerce'
-                    )
-                    df = df.drop(columns=['date'], errors='ignore')
-
-                df.index.name = 'Date'
-
-                # Rename MT5 columns to standard names
-                rename_map = {
-                    'open': 'Open', 'high': 'High',
-                    'low': 'Low', 'close': 'Close',
-                    'vol': 'Volume', 'tick vol': 'Volume',
-                    'tick volume': 'Volume', 'volume': 'Volume'
-                }
-                df = df.rename(columns=rename_map)
-
-                # Keep required columns
-                required = ['Open','High','Low','Close']
-                missing  = [c for c in required if c not in df.columns]
-                if missing:
-                    st.error(f"MT5 CSV missing columns: {missing}")
-                    return None
-
-                if 'Volume' not in df.columns:
-                    df['Volume'] = 0.0
-
-                df = df[['Open','High','Low','Close','Volume']].astype(float)
-                df = df.dropna().sort_index()
-
-                if len(df) > 0:
-                    st.success(
-                        f"✅ MT5 format detected — {len(df):,} bars loaded"
-                    )
-                    return df
-
-        except Exception:
-            pass
-
-        # ── Try standard CSV format ───────────────────────────
-        uploaded_file.seek(0)
-        df = pd.read_csv(uploaded_file)
-        df.columns = [c.strip().title() for c in df.columns]
-
-        # Find date column
-        date_col = next(
-            (c for c in ['Date','Datetime','Timestamp','Time','Open Time']
-             if c in df.columns),
-            None
-        )
-        if date_col is None:
-            # Try first column as date
-            first_col = df.columns[0]
-            try:
-                pd.to_datetime(df[first_col].iloc[0])
-                date_col = first_col
-            except Exception:
-                st.error(
-                    "Cannot find date column. "
-                    "Expected: Date, Datetime, Timestamp, or Time"
-                )
-                return None
-
-        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-        df = df.set_index(date_col)
-        df.index.name = 'Date'
-
-        # Check required columns
-        required = ['Open','High','Low','Close']
-        missing  = [c for c in required if c not in df.columns]
-        if missing:
-            st.error(f"CSV missing columns: {missing}")
-            return None
-
-        if 'Volume' not in df.columns:
-            df['Volume'] = 0.0
-
-        df = df[['Open','High','Low','Close','Volume']].astype(float)
-        df = df.dropna().sort_index()
-        return df
-
-    except Exception as e:
-        st.error(f"CSV error: {e}")
-        return None
-
-
-def fetch_data(symbol, period, uploaded_file=None):
-    """Try all data sources in order"""
-
-    # 1. User CSV upload (highest priority)
-    if uploaded_file is not None:
-        uploaded_file.seek(0)
-        df = load_csv(uploaded_file)
-        if df is not None and len(df) > 30:
-            return df, "📁 Your CSV"
-        else:
-            st.warning(
-                "CSV uploaded but could not be read. "
-                "Trying live data sources..."
-            )
-
-    # 2. Binance (most reliable for crypto)
-    with st.spinner("📡 Trying Binance..."):
-        df = fetch_binance(symbol, period)
-    if df is not None and len(df) > 30:
-        return df, "🟡 Binance"
-
-    # 3. CoinGecko fallback
-    with st.spinner("📡 Trying CoinGecko..."):
-        days = PERIOD_DAYS.get(period, 90)
-        df   = fetch_coingecko(symbol, days)
-    if df is not None and len(df) > 30:
-        return df, "🦎 CoinGecko"
-
-    return None, None
+PERIOD_DAYS = {'1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '2y': 730}
+BINANCE_LIMITS = {'1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '2y': 730}
 
 # ═══════════════════════════════════════════════════════════════
 # GROQ INIT
 # ═══════════════════════════════════════════════════════════════
+GROQ_AVAILABLE = False
+try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    pass
+
 def init_llm():
     if not GROQ_AVAILABLE:
         st.error("groq package not installed.")
         return None
     try:
         return Groq(api_key=st.secrets["GROQ_API_KEY"])
-    except ImportError:
-        st.error("groq package not installed.")
-        return None
     except Exception as e:
         st.error(f"Groq error: {e}")
         return None
 
-# ─────────────────────────────────────────────────────────────
-# DATA — BINANCE (primary) + COINGECKO (fallback) + CSV (manual)
-# ─────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+# DATA FETCHING
+# ═══════════════════════════════════════════════════════════════
 def fetch_binance(symbol: str, period: str):
-    """Fetch from Binance with 3 retries"""
-    sym   = symbol.upper()
-    limit = 90
+    sym = BINANCE_SYMBOLS.get(symbol.upper())
+    limit = BINANCE_LIMITS.get(period, 90)
     if not sym:
         return None
-
     import time
     for attempt in range(3):
         try:
@@ -1062,7 +543,6 @@ def fetch_binance(symbol: str, period: str):
                     df['Date'] = pd.to_datetime(df['timestamp'], unit="ms")
                     df = df[['Open','High','Low','Close','Volume']].astype(float)
                     return df.dropna().sort_index()
-            # Wait before retry
             if attempt < 2:
                 time.sleep(2)
         except Exception:
@@ -1070,9 +550,7 @@ def fetch_binance(symbol: str, period: str):
                 time.sleep(2)
     return None
 
-
 def fetch_coingecko(symbol: str, days: int):
-    """Fetch from CoinGecko free API"""
     coin_id = COINGECKO_IDS.get(symbol.upper(), symbol.lower())
     api_key = ""
     try:
@@ -1103,173 +581,111 @@ def fetch_coingecko(symbol: str, days: int):
     except Exception:
         return None
 
-
 def load_csv(uploaded_file):
-    """Load CSV with format detection"""
     import io
-
     try:
-        # Read raw bytes first to detect format
         raw = uploaded_file.read()
         uploaded_file.seek(0)
-
-        # ── Try MT5 format first ──────────────────────────────
-        try:
-            content = raw.decode('utf-8')
-            lines   = content.strip().split('\n')
-
-            # Detect MT5 by checking if first line has <DATE> or tab-separated
-            is_mt5 = ('<DATE>' in lines[0] or
-                      '\t' in lines[0] or
-                      lines[0].startswith('<'))
-
-            if is_mt5:
-                # Remove angle brackets from headers
-                header = lines[0].replace('<','').replace('>','').strip()
-                cols   = [c.strip().lower() for c in header.split('\t')]
-
-                rows = []
-                for line in lines[1:]:
-                    if line.strip():
-                        rows.append(line.strip().split('\t'))
-
-                df = pd.DataFrame(rows, columns=cols)
-
-                # MT5 has separate date and time columns
-                if 'date' in cols and 'time' in cols:
-                    df['datetime'] = pd.to_datetime(
-                        df['date'] + ' ' + df['time'],
-                        format='%Y.%m.%d %H:%M:%S',
+        content = raw.decode('utf-8')
+        lines = content.strip().split('\n')
+        is_mt5 = ('<DATE>' in lines[0] or '\t' in lines[0] or lines[0].startswith('<'))
+        if is_mt5:
+            header = lines[0].replace('<','').replace('>','').strip()
+            cols = [c.strip().lower() for c in header.split('\t')]
+            rows = []
+            for line in lines[1:]:
+                if line.strip():
+                    rows.append(line.strip().split('\t'))
+            df = pd.DataFrame(rows, columns=cols)
+            if 'date' in cols and 'time' in cols:
+                df['datetime'] = pd.to_datetime(
+                    df['date'] + ' ' + df['time'],
+                    format='%Y.%m.%d %H:%M:%S',
+                    errors='coerce'
+                )
+                mask = df['datetime'].isna()
+                if mask.any():
+                    df.loc[mask, 'datetime'] = pd.to_datetime(
+                        df.loc[mask,'date'] + ' ' + df.loc[mask,'time'],
+                        format='%Y.%m.%d %H:%M',
                         errors='coerce'
                     )
-                    # Fallback format without seconds
-                    mask = df['datetime'].isna()
-                    if mask.any():
-                        df.loc[mask, 'datetime'] = pd.to_datetime(
-                            df.loc[mask,'date'] + ' ' + df.loc[mask,'time'],
-                            format='%Y.%m.%d %H:%M',
-                            errors='coerce'
-                        )
-                    df = df.set_index('datetime')
-                elif 'date' in cols:
-                    df.index = pd.to_datetime(
-                        df['date'], format='%Y.%m.%d', errors='coerce'
-                    )
-                    df = df.drop(columns=['date'], errors='ignore')
-
-                df.index.name = 'Date'
-
-                # Rename MT5 columns to standard names
-                rename_map = {
-                    'open': 'Open', 'high': 'High',
-                    'low': 'Low', 'close': 'Close',
-                    'vol': 'Volume', 'tick vol': 'Volume',
-                    'tick volume': 'Volume', 'volume': 'Volume'
-                }
-                df = df.rename(columns=rename_map)
-
-                # Keep required columns
-                required = ['Open','High','Low','Close']
-                missing  = [c for c in required if c not in df.columns]
-                if missing:
-                    st.error(f"MT5 CSV missing columns: {missing}")
-                    return None
-
-                if 'Volume' not in df.columns:
-                    df['Volume'] = 0.0
-
-                df = df[['Open','High','Low','Close','Volume']].astype(float)
-                df = df.dropna().sort_index()
-
-                if len(df) > 0:
-                    st.success(
-                        f"✅ MT5 format detected — {len(df):,} bars loaded"
-                    )
-                    return df
-
-        except Exception:
-            pass
-
-        # ── Try standard CSV format ───────────────────────────
+                df = df.set_index('datetime')
+            elif 'date' in cols:
+                df.index = pd.to_datetime(df['date'], format='%Y.%m.%d', errors='coerce')
+                df = df.drop(columns=['date'], errors='ignore')
+            df.index.name = 'Date'
+            rename_map = {
+                'open': 'Open', 'high': 'High',
+                'low': 'Low', 'close': 'Close',
+                'vol': 'Volume', 'tick vol': 'Volume',
+                'tick volume': 'Volume', 'volume': 'Volume'
+            }
+            df = df.rename(columns=rename_map)
+            required = ['Open','High','Low','Close']
+            missing = [c for c in required if c not in df.columns]
+            if missing:
+                st.error(f"MT5 CSV missing columns: {missing}")
+                return None
+            if 'Volume' not in df.columns:
+                df['Volume'] = 0.0
+            df = df[['Open','High','Low','Close','Volume']].astype(float)
+            df = df.dropna().sort_index()
+            if len(df) > 0:
+                st.success(f"✅ MT5 format detected — {len(df):,} bars loaded")
+                return df
         uploaded_file.seek(0)
         df = pd.read_csv(uploaded_file)
         df.columns = [c.strip().title() for c in df.columns]
-
-        # Find date column
         date_col = next(
-            (c for c in ['Date','Datetime','Timestamp','Time','Open Time']
-             if c in df.columns),
+            (c for c in ['Date','Datetime','Timestamp','Time','Open Time'] if c in df.columns),
             None
         )
         if date_col is None:
-            # Try first column as date
             first_col = df.columns[0]
             try:
                 pd.to_datetime(df[first_col].iloc[0])
                 date_col = first_col
             except Exception:
-                st.error(
-                    "Cannot find date column. "
-                    "Expected: Date, Datetime, Timestamp, or Time"
-                )
+                st.error("Cannot find date column. Expected: Date, Datetime, Timestamp, or Time")
                 return None
-
         df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
         df = df.set_index(date_col)
         df.index.name = 'Date'
-
-        # Check required columns
         required = ['Open','High','Low','Close']
-        missing  = [c for c in required if c not in df.columns]
+        missing = [c for c in required if c not in df.columns]
         if missing:
             st.error(f"CSV missing columns: {missing}")
             return None
-
         if 'Volume' not in df.columns:
             df['Volume'] = 0.0
-
         df = df[['Open','High','Low','Close','Volume']].astype(float)
         df = df.dropna().sort_index()
         return df
-
     except Exception as e:
         st.error(f"CSV error: {e}")
         return None
 
-
 def fetch_data(symbol, period, uploaded_file=None):
-    """Try all data sources in order"""
-
-    # 1. User CSV upload (highest priority)
     if uploaded_file is not None:
         uploaded_file.seek(0)
         df = load_csv(uploaded_file)
         if df is not None and len(df) > 30:
             return df, "📁 Your CSV"
-        else:
-            st.warning(
-                "CSV uploaded but could not be read. "
-                "Trying live data sources..."
-            )
-
-    # 2. Binance (most reliable for crypto)
     with st.spinner("📡 Trying Binance..."):
         df = fetch_binance(symbol, period)
     if df is not None and len(df) > 30:
         return df, "🟡 Binance"
-
-    # 3. CoinGecko fallback
     with st.spinner("📡 Trying CoinGecko..."):
         days = PERIOD_DAYS.get(period, 90)
-        df   = fetch_coingecko(symbol, days)
+        df = fetch_coingecko(symbol, days)
     if df is not None and len(df) > 30:
         return df, "🦎 CoinGecko"
-
     return None, None
 
-# ─────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
 # GROQ HELPERS
-# ─────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
 def parse_strategy(client, description: str):
     prompt = f"""You are a quantitative trading expert.
 Parse this trading strategy into structured JSON.
@@ -1297,7 +713,6 @@ IMPORTANT:
 - If user only says BUY/LONG — set entry_short to null
 - If user only says SELL/SHORT — set entry_long to null
 - Only set both if user explicitly mentions both directions"""
-
     try:
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -1310,25 +725,21 @@ IMPORTANT:
         elif '```' in text:
             text = text.split('```')[1].split('```')[0]
         result = json.loads(text.strip())
-
-        # Sanitize — ensure critical numeric fields are never None
         result['sl_pct'] = result.get('sl_pct') or 0.02
         result['tp_pct'] = result.get('tp_pct') or 0.06
         result['strategy_type'] = result.get('strategy_type') or 'trend'
-        result['summary']       = result.get('summary') or 'Trading Strategy'
-        result['indicators']    = result.get('indicators') or []
+        result['summary'] = result.get('summary') or 'Trading Strategy'
+        result['indicators'] = result.get('indicators') or []
         result['indicator_params'] = result.get('indicator_params') or {
             'ema_fast': 20, 'ema_slow': 50,
             'rsi_period': 14, 'rsi_overbought': 70, 'rsi_oversold': 30
         }
-        # Ensure indicator_params values are never None
         ip = result['indicator_params']
-        ip['ema_fast']       = ip.get('ema_fast')       or 20
-        ip['ema_slow']       = ip.get('ema_slow')       or 50
-        ip['rsi_period']     = ip.get('rsi_period')     or 14
+        ip['ema_fast'] = ip.get('ema_fast') or 20
+        ip['ema_slow'] = ip.get('ema_slow') or 50
+        ip['rsi_period'] = ip.get('rsi_period') or 14
         ip['rsi_overbought'] = ip.get('rsi_overbought') or 70
-        ip['rsi_oversold']   = ip.get('rsi_oversold')   or 30
-
+        ip['rsi_oversold'] = ip.get('rsi_oversold') or 30
         return result
     except json.JSONDecodeError:
         st.error("AI returned invalid JSON. Please rephrase your strategy.")
@@ -1337,37 +748,22 @@ IMPORTANT:
         st.error(f"Parse error: {e}")
         return None
 
-
 def detect_advanced_features(description: str) -> dict:
-    """Detect direction and advanced features from description"""
     d = description.lower()
     return {
-        'has_partial_close':  any(w in d for w in ['partial', 'scale out', 'partial close']),
-        'has_trailing_stop':  any(w in d for w in ['trail', 'trailing']),
-        'has_both_directions':any(w in d for w in ['short', 'sell when', 'both']),
-        'has_long':           any(w in d for w in ['buy', 'long', 'bullish']),
+        'has_partial_close': any(w in d for w in ['partial', 'scale out', 'partial close']),
+        'has_trailing_stop': any(w in d for w in ['trail', 'trailing']),
+        'has_both_directions': any(w in d for w in ['short', 'sell when', 'both']),
+        'has_long': any(w in d for w in ['buy', 'long', 'bullish']),
     }
 
-
 def generate_signal_block(client, description: str, strategy: dict) -> str:
-    """
-    GROQ's ONLY JOB: translate plain English → signal lines.
-    Everything else is hardcoded by us.
-
-    THE FIX vs previous versions:
-    - No static EMA 20/50 example — that was why Groq kept outputting EMA 20/50
-    - Dynamic prompt built from actual strategy Groq already parsed
-    - Auto-repair layer catches any remaining mistakes
-    - Groq gets told WHAT indicators the strategy needs (from parse step)
-    """
-    features    = detect_advanced_features(description)
-    has_long    = features['has_long'] or not features['has_both_directions']
-    has_short   = features['has_both_directions']
-    stype       = strategy.get('strategy_type', 'trend')
-    indicators  = strategy.get('indicators', [])
-    params      = strategy.get('indicator_params', {}) or {}
-
-    # Build direction rule
+    features = detect_advanced_features(description)
+    has_long = features['has_long'] or not features['has_both_directions']
+    has_short = features['has_both_directions']
+    stype = strategy.get('strategy_type', 'trend')
+    indicators = strategy.get('indicators', [])
+    params = strategy.get('indicator_params', {}) or {}
     if has_long and has_short:
         direction = "BOTH long AND short"
         signal_template = """\
@@ -1386,13 +782,10 @@ df['Signal']       = -df['short_signal'].astype(int)"""
 df['long_signal']  = <YOUR_LONG_CONDITION>.fillna(False)
 df['short_signal'] = pd.Series(False, index=df.index)
 df['Signal']       = df['long_signal'].astype(int)"""
-
-    # Build hint about what indicators the strategy uses
     ind_hint = f"Strategy type: {stype}\nIndicators mentioned: {', '.join(indicators) if indicators else 'detect from description'}"
     if params.get('ema_fast'): ind_hint += f"\nEMA fast period: {params['ema_fast']}"
     if params.get('ema_slow'): ind_hint += f"\nEMA slow period: {params['ema_slow']}"
     if params.get('rsi_period'): ind_hint += f"\nRSI period: {params['rsi_period']}"
-
     prompt = f"""You are a Python quant developer.
 Translate this trading strategy into Python signal detection code.
 
@@ -1449,7 +842,6 @@ RULES:
 5. Output ONLY Python lines — no imports, no def, no markdown, no comments
 
 OUTPUT ONLY THE PYTHON LINES NOW:"""
-
     try:
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -1462,16 +854,11 @@ OUTPUT ONLY THE PYTHON LINES NOW:"""
             text = text.split('```python')[1].split('```')[0]
         elif '```' in text:
             text = text.split('```')[1].split('```')[0]
-
         lines = [l for l in text.strip().splitlines()
                  if not l.strip().startswith('import ')
                  and not l.strip().startswith('from ')
                  and l.strip() != '']
-
         joined = '\n'.join(lines)
-
-        # ── AUTO-REPAIR: fix Groq mistakes ───────────────────
-        # Repair 1: Signal missing
         if "df['Signal']" not in joined and 'df["Signal"]' not in joined:
             if has_long and has_short:
                 lines.append("df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)")
@@ -1479,35 +866,25 @@ OUTPUT ONLY THE PYTHON LINES NOW:"""
                 lines.append("df['Signal'] = -df['short_signal'].astype(int)")
             else:
                 lines.append("df['Signal'] = df['long_signal'].astype(int)")
-
-        # Repair 2: long_signal missing
         if "long_signal" not in joined:
             lines.insert(0, "df['long_signal'] = pd.Series(False, index=df.index)")
-
-        # Repair 3: short_signal missing
         if "short_signal" not in joined:
             lines.insert(0, "df['short_signal'] = pd.Series(False, index=df.index)")
-
-        # Repair 4: fillna missing on boolean signals
         repaired = []
         for line in lines:
-            if (("long_signal']  =" in line or "long_signal'] =" in line) and
-                    'fillna' not in line and 'pd.Series' not in line and 'astype' not in line):
+            if (("long_signal']  =" in line or "long_signal'] =" in line) and \
+                    'fillna' not in line and 'pd.Series' not in line and 'astype' not in line:
                 line = line.rstrip() + '.fillna(False)'
-            if (("short_signal']  =" in line or "short_signal'] =" in line) and
-                    'fillna' not in line and 'pd.Series' not in line and 'astype' not in line):
+            if (("short_signal']  =" in line or "short_signal'] =" in line) and \
+                    'fillna' not in line and 'pd.Series' not in line and 'astype' not in line:
                 line = line.rstrip() + '.fillna(False)'
             repaired.append(line)
         lines = repaired
-
-        # Indent 4 spaces
         return '\n'.join(
             '    ' + line.lstrip() if line.strip() else ''
             for line in lines
         )
-
     except Exception as e:
-        # Safe fallback
         if has_long and has_short:
             sig = "    df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)"
         elif has_short:
@@ -1521,29 +898,18 @@ OUTPUT ONLY THE PYTHON LINES NOW:"""
             f"    # Signal generation failed: {e}"
         )
 
-
-def generate_python_code(client, strategy, symbol,
-                          description: str = '') -> str:
-    """
-    Generates complete backtest code.
-    - Signal block: ALWAYS written by Groq via generate_signal_block()
-    - Everything else: hardcoded by us (math always correct)
-    """
+def generate_python_code(client, strategy, symbol, description: str = '') -> str:
     binance_sym = BINANCE_SYMBOLS.get(symbol.upper(), 'BTCUSDT')
-    sl_pct      = strategy.get('sl_pct') or 0.01
-    tp_pct      = strategy.get('tp_pct') or 0.02
-    summary     = strategy.get('summary', 'Trading Strategy')
-    features    = detect_advanced_features(description)
+    sl_pct = strategy.get('sl_pct') or 0.01
+    tp_pct = strategy.get('tp_pct') or 0.02
+    summary = strategy.get('summary', 'Trading Strategy')
+    features = detect_advanced_features(description)
     has_trailing = features['has_trailing_stop']
-    has_partial  = features['has_partial_close']
-
-    # ── Signal block — Groq writes this ──────────────────────
+    has_partial = features['has_partial_close']
     signal_block = generate_signal_block(client, description, strategy)
-
-    # ── Read embedded library for inline inclusion ─────────────
     try:
         lib_lines = []
-        in_lib    = False
+        in_lib = False
         with open(__file__, 'r') as f:
             for line in f:
                 if '# ═══════════════════════════════════════════════════════════════' in line and 'QUANT ALPHA INDICATOR LIBRARY' in line:
@@ -1552,14 +918,11 @@ def generate_python_code(client, strategy, symbol,
                     lib_lines.append(line)
                 if in_lib and 'LIBRARY_REFERENCE' in line and '"""' in line and len(lib_lines) > 5:
                     break
-        lib_code = ''.join(lib_lines[:400])  # safety limit
+        lib_code = ''.join(lib_lines[:400])
     except Exception:
         lib_code = "# indicator library not found"
-
-    # ── Trailing / partial close config ───────────────────────
-    trail_arg   = "trail_pct=0.03"  if has_trailing else "trail_pct=None"
+    trail_arg = "trail_pct=0.03" if has_trailing else "trail_pct=None"
     partial_arg = "partial_close_pct=0.3" if has_partial else "partial_close_pct=None"
-
     code = f'''import requests
 import pandas as pd
 import numpy as np
@@ -1590,14 +953,12 @@ def fetch_data():
         print(f"Data error: {{e}}")
         return None
 
-
 # ── Generate signals (AI-written, library-backed) ─────────────
 def generate_signals(df):
 {signal_block}
     # Shift by 1 bar — prevents lookahead bias
     df["Position"] = df["Signal"].shift(1).fillna(0)
     return df
-
 
 # ── Backtest ──────────────────────────────────────────────────
 def backtest(df, sl_pct={{sl_pct}}, tp_pct={{tp_pct}},
@@ -1655,7 +1016,6 @@ def backtest(df, sl_pct={{sl_pct}}, tp_pct={{tp_pct}},
         df["Strategy_Return"] = pd.Series(equities).pct_change().fillna(0).values
     return df
 
-
 # ── Metrics ───────────────────────────────────────────────────
 def metrics(df):
     r        = df["Strategy_Return"].dropna()
@@ -1666,7 +1026,6 @@ def metrics(df):
     total_r  = df["Strategy_Equity"].iloc[-1] - 1
     n_trades = int((df["Position"] != df["Position"].shift(1)).sum() / 2)
     return sharpe, max_dd, win_rate, total_r, n_trades
-
 
 # ── Chart ─────────────────────────────────────────────────────
 def plot_results(df):
@@ -1697,19 +1056,17 @@ def plot_results(df):
         ), row=1, col=1)
         for date, row in long_e.iterrows():
             entry = float(row["Close"])
-            sl    = entry * (1 - sl_pct)
-            tp    = entry * (1 + tp_pct)
+            sl = entry * (1 - sl_pct)
+            tp = entry * (1 + tp_pct)
             try:
-                end_date = df["Open time"].iloc[min(
-                    df["Open time"].get_loc(date) + 8,
-                    len(df["Open time"]) - 1
-                )]
+                end_idx = min(df["Open time"].get_loc(date) + 8, len(df["Open time"]) - 1)
+                end_date = df["Open time"][end_idx]
             except Exception:
                 end_date = date
             fig.add_shape(type="line", x0=date, x1=end_date, y0=sl, y1=sl,
-                line=dict(color="#ef4444", width=1.2, dash="dash"), row=1, col=1)
+                         line=dict(color="#ef4444", width=1.2, dash="dash"), row=1, col=1)
             fig.add_shape(type="line", x0=date, x1=end_date, y0=tp, y1=tp,
-                line=dict(color="#4ade80", width=1.2, dash="dot"), row=1, col=1)
+                         line=dict(color="#4ade80", width=1.2, dash="dot"), row=1, col=1)
             fig.add_annotation(x=end_date, y=sl,
                 text=f"SL {sl_pct*100:.0f}%", showarrow=False,
                 font=dict(color="#ef4444", size=9), xanchor="left", row=1, col=1)
@@ -1726,21 +1083,18 @@ def plot_results(df):
         ), row=1, col=1)
         for date, row in short_e.iterrows():
             entry = float(row["Close"])
-            sl    = entry * (1 + sl_pct)
-            tp    = entry * (1 - tp_pct)
+            sl = entry * (1 + sl_pct)
+            tp = entry * (1 - tp_pct)
             try:
-                end_date = df["Open time"].iloc[min(
-                    df["Open time"].get_loc(date) + 8,
-                    len(df["Open time"]) - 1
-                )]
+                end_idx = min(df["Open time"].get_loc(date) + 8, len(df["Open time"]) - 1)
+                end_date = df["Open time"][end_idx]
             except Exception:
                 end_date = date
             fig.add_shape(type="line", x0=date, x1=end_date, y0=sl, y1=sl,
-                line=dict(color="#ef4444", width=1.2, dash="dash"), row=1, col=1)
+                         line=dict(color="#ef4444", width=1.2, dash="dash"), row=1, col=1)
             fig.add_shape(type="line", x0=date, x1=end_date, y0=tp, y1=tp,
-                line=dict(color="#4ade80", width=1.2, dash="dot"), row=1, col=1)
-    bar_colors = ["#26a69a" if c>=o else "#ef5350"
-                  for c,o in zip(df["Close"],df["Open"])]
+                         line=dict(color="#4ade80", width=1.2, dash="dot"), row=1, col=1)
+    bar_colors = ["#26a69a" if c>=o else "#ef5350" for c,o in zip(df["Close"],df["Open"])]
     fig.add_trace(go.Bar(
         x=df["Open time"], y=df["Volume"],
         name="Volume", marker_color=bar_colors, opacity=0.6
@@ -1760,8 +1114,8 @@ def plot_results(df):
         title=dict(
             text=f"<b>{symbol}</b> — {summary}<br>"
             f"<span style='font-size:11px;color:#6b5b3a'>"
-            f"🔺 {n_long} Long  🔻 {n_short} Short  "
-            f"| {{data_source}} | Last 80 bars</span>"
+            f"🔺 {len(long_e)} Long  🔻 {len(short_e)} Short  "
+            f"| {description[:30]} | Last 80 bars</span>"
         ),
         title_font=dict(color="#f59e0b", size=13),
     )
@@ -1771,7 +1125,6 @@ def plot_results(df):
                     tickfont=dict(color="#6b5b3a"))
     return fig
 
-
 # ── Main ─────────────────────────────────────────────────────
 def main():
     df = fetch_data()
@@ -1779,16 +1132,16 @@ def main():
         print("Failed to fetch data.")
         return
     df = generate_signals(df)
-    df = backtest(df, {{trail_arg}}, {{partial_arg}})
+    df = backtest(df, {trail_arg}, {partial_arg})
     sharpe, max_dd, win_rate, total_r, n_trades = metrics(df)
     print("=" * 50)
     print(f"  {summary}")
     print("=" * 50)
-    print(f"  Sharpe Ratio : {{sharpe:.2f}}")
-    print(f"  Max Drawdown : {{max_dd:.1%}}")
-    print(f"  Win Rate     : {{win_rate:.1%}}")
-    print(f"  Total Return : {{total_r:.1%}}")
-    print(f"  Trades       : {{n_trades}}")
+    print(f"  Sharpe Ratio : {sharpe:.2f}")
+    print(f"  Max Drawdown : {max_dd:.1%}")
+    print(f"  Win Rate     : {win_rate:.1%}")
+    print(f"  Total Return : {total_r:.1%}")
+    print(f"  Trades       : {n_trades}")
     print("=" * 50)
     fig = plot_results(df)
     fig.show()
@@ -1798,29 +1151,19 @@ if __name__ == "__main__":
 '''
     return code
 
-# ─────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
 # APP SIGNAL RUNNER
-# Executes the same Groq signal block that goes into the app — chart shows exactly what client gets
-# ─────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
 def generate_signals(df, strategy, client=None, description=''):
-    """
-    Run Groq signal block on the dataframe for the app chart.
-    Same code as the downloaded backtest — what you see = what you get.
-    """
     df = df.copy()
-
-    # Initialize safe defaults
-    df['long_signal']  = pd.Series(False, index=df.index)
+    df['long_signal'] = pd.Series(False, index=df.index)
     df['short_signal'] = pd.Series(False, index=df.index)
-    df['Signal']       = pd.Series(0, index=df.index)
-
+    df['Signal'] = pd.Series(0, index=df.index)
     if not client or not description:
-        # Fallback: basic signal from parsed strategy
-        p     = strategy.get('indicator_params', {}) or {}
+        p = strategy.get('indicator_params', {}) or {}
         stype = strategy.get('strategy_type', 'trend')
-        wants_long  = strategy.get('entry_long')  is not None
+        wants_long = strategy.get('entry_long') is not None
         wants_short = strategy.get('entry_short') is not None
-
         if 'EMA_fast' in df.columns and 'EMA_slow' in df.columns:
             if wants_long:
                 df['long_signal'] = (
@@ -1834,16 +1177,10 @@ def generate_signals(df, strategy, client=None, description=''):
                 ).fillna(False)
         df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)
         return df
-
-    # Get Groq signal block
     signal_block = generate_signal_block(client, description, strategy)
-
-    # Execute signal block in dataframe context
-    # Library functions are in global scope — available here
     try:
         exec_globals = {
             'df': df, 'pd': pd, 'np': np,
-            # inject all library functions
             'add_ema': add_ema, 'add_sma': add_sma,
             'add_rsi': add_rsi, 'add_macd': add_macd,
             'add_bollinger': add_bollinger, 'add_atr': add_atr,
@@ -1856,44 +1193,3 @@ def generate_signals(df, strategy, client=None, description=''):
             'add_liquidity_levels': add_liquidity_levels,
             'add_order_blocks': add_order_blocks,
             'add_premium_discount': add_premium_discount,
-            'add_market_structure': add_market_structure,
-            'add_optimal_trade_entry': add_optimal_trade_entry,
-            'add_killzones': add_killzones,
-            'add_previous_day_levels': add_previous_day_levels,
-            'add_weekly_levels': add_weekly_levels,
-            'add_equal_highs_lows': add_equal_highs_lows,
-            'add_support_resistance': add_support_resistance,
-            'crossover': crossover, 'crossunder': crossunder,
-            'above_level': above_level, 'below_level': below_level,
-            'rising': rising, 'falling': falling,
-        }
-        # Remove 4-space indent from signal block for exec
-        clean_block = '\n'.join(
-            line[4:] if line.startswith('    ') else line
-            for line in signal_block.splitlines()
-        )
-        exec(clean_block, exec_globals)
-        df = exec_globals['df']
-
-        # Ensure proper types
-        if 'long_signal' in df.columns:
-            df['long_signal'] = df['long_signal'].fillna(False).astype(bool)
-        if 'short_signal' in df.columns:
-            df['short_signal'] = df['short_signal'].fillna(False).astype(bool)
-        if 'Signal' not in df.columns:
-            df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)
-
-    except Exception as e:
-        st.warning(f"Signal execution error: {e}. Using empty signals.")
-
-    return df
-
-# ─────────────────────────────────────────────────────────────
-# PLOTLY CHART
-# ─────────────────────────────────────────────────────────────
-def draw_chart(df, strategy, symbol, data_source, show='both'):
-    df_plot = df.tail(80).copy()
-    sl_pct  = strategy.get('sl_pct') or 0.02
-    tp_pct  = strategy.get('tp_pct') or 0.06
-    stype   = strategy.get('strategy_type', 'trend')
-    params  = strategy.get('indicator_params', {}) or
