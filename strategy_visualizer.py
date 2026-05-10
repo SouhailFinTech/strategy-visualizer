@@ -6,9 +6,7 @@ import json
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# ═══════════════════════════════════════════════════════════════
 # PAGE CONFIG
-# ═══════════════════════════════════════════════════════════════
 st.set_page_config(
     page_title="Strategy Visualizer | Quant Alpha",
     page_icon="📈",
@@ -16,9 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ═══════════════════════════════════════════════════════════════
 # CSS
-# ═══════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Syne:wght@400;600;800&display=swap');
@@ -135,9 +131,7 @@ html, body, [class*="css"] {
 </style>
 """, unsafe_allow_html=True)
 
-# ═══════════════════════════════════════════════════════════════
 # CONSTANTS
-# ═══════════════════════════════════════════════════════════════
 BINANCE_SYMBOLS = {
     'BTC': 'BTCUSDT', 'ETH': 'ETHUSDT', 'SOL': 'SOLUSDT',
     'BNB': 'BNBUSDT', 'XRP': 'XRPUSDT', 'ADA': 'ADAUSDT',
@@ -157,9 +151,7 @@ COINGECKO_IDS = {
 PERIOD_DAYS = {'1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '2y': 730}
 BINANCE_LIMITS = {'1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '2y': 730}
 
-# ═══════════════════════════════════════════════════════════════
 # GROQ INIT
-# ═══════════════════════════════════════════════════════════════
 try:
     from groq import Groq
     GROQ_AVAILABLE = True
@@ -176,10 +168,7 @@ def init_llm():
         st.error(f"Groq error: {e}")
         return None
 
-# ═══════════════════════════════════════════════════════════════
 # INDICATOR LIBRARY
-# ═══════════════════════════════════════════════════════════════
-
 def add_ema(df: pd.DataFrame, period: int) -> pd.DataFrame:
     col = f'EMA_{period}'
     df[col] = df['Close'].ewm(span=period, adjust=False).mean()
@@ -547,9 +536,7 @@ def add_smc_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df = add_previous_day_levels(df)
     return df
 
-# ═══════════════════════════════════════════════════════════════
 # DATA FETCHING
-# ═══════════════════════════════════════════════════════════════
 def fetch_binance(symbol: str, period: str):
     sym = BINANCE_SYMBOLS.get(symbol.upper())
     limit = BINANCE_LIMITS.get(period, 90)
@@ -611,7 +598,6 @@ def fetch_coingecko(symbol: str, days: int):
         return None
 
 def clean_duplicate_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Remove duplicate column names by appending suffix"""
     cols = df.columns
     if cols.duplicated().any():
         cols = pd.io.parsers.ParserBase({'names': cols})._maybe_dedup_names(cols)
@@ -619,13 +605,11 @@ def clean_duplicate_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def clean_duplicate_index(df: pd.DataFrame) -> pd.DataFrame:
-    """Remove duplicate index values by keeping first occurrence"""
     if df.index.duplicated().any():
         df = df[~df.index.duplicated(keep='first')]
     return df
 
 def load_csv(uploaded_file):
-    """Load CSV with MT5 and standard format support"""
     import io
     try:
         raw = uploaded_file.read()
@@ -680,7 +664,7 @@ def load_csv(uploaded_file):
                 df = clean_duplicate_index(df)
                 
                 if len(df) > 0:
-                    st.success(f"✅ MT5 format detected — {len(df):,} bars loaded")
+                    st.success(f"MT5 format detected - {len(df):,} bars loaded")
                     return df
         except Exception:
             pass
@@ -729,43 +713,25 @@ def fetch_data(symbol, period, uploaded_file=None):
         uploaded_file.seek(0)
         df = load_csv(uploaded_file)
         if df is not None and len(df) > 30:
-            return df, "📁 Your CSV"
+            return df, "Your CSV"
         st.warning("CSV uploaded but could not be read. Trying live data sources...")
     
-    with st.spinner("📡 Trying Binance..."):
+    with st.spinner("Trying Binance..."):
         df = fetch_binance(symbol, period)
     if df is not None and len(df) > 30:
-        return df, "🟡 Binance"
+        return df, "Binance"
     
-    with st.spinner("📡 Trying CoinGecko..."):
+    with st.spinner("Trying CoinGecko..."):
         days = PERIOD_DAYS.get(period, 90)
         df = fetch_coingecko(symbol, days)
     if df is not None and len(df) > 30:
-        return df, "🦎 CoinGecko"
+        return df, "CoinGecko"
     
     return None, None
 
-# ═══════════════════════════════════════════════════════════════
 # GROQ HELPERS
-# ═══════════════════════════════════════════════════════════════
 def parse_strategy(client, description: str):
-    prompt = """You are a quantitative trading expert.
-Parse this trading strategy into structured JSON.
-Strategy: \"""" + description + "\""""
-Return ONLY valid JSON:
-{
-  "entry_long": "long entry condition or null if no long",
-  "entry_short": "short entry condition or null if no short",
-  "stop_loss": "stop loss description",
-  "take_profit": "take profit description",
-  "indicators": ["list of indicators"],
-  "strategy_type": "trend or mean-reversion or breakout or momentum",
-  "sl_pct": 0.02,
-  "tp_pct": 0.06,
-  "indicator_params": {"ema_fast": 20, "ema_slow": 50, "rsi_period": 14, "rsi_overbought": 70, "rsi_oversold": 30},
-  "summary": "one sentence summary"
-}
-IMPORTANT: If user only says BUY/LONG — set entry_short to null. If user only says SELL/SHORT — set entry_long to null."""
+    prompt = "You are a quantitative trading expert.\nParse this trading strategy into structured JSON.\nStrategy: \"" + description + "\"\nReturn ONLY valid JSON:\n{\n  \"entry_long\": \"long entry condition or null if no long\",\n  \"entry_short\": \"short entry condition or null if no short\",\n  \"stop_loss\": \"stop loss description\",\n  \"take_profit\": \"take profit description\",\n  \"indicators\": [\"list of indicators\"],\n  \"strategy_type\": \"trend or mean-reversion or breakout or momentum\",\n  \"sl_pct\": 0.02,\n  \"tp_pct\": 0.06,\n  \"indicator_params\": {\"ema_fast\": 20, \"ema_slow\": 50, \"rsi_period\": 14, \"rsi_overbought\": 70, \"rsi_oversold\": 30},\n  \"summary\": \"one sentence summary\"\n}\nIMPORTANT: If user only says BUY/LONG - set entry_short to null. If user only says SELL/SHORT - set entry_long to null."
 
     try:
         response = client.chat.completions.create(
@@ -817,19 +783,13 @@ def generate_signal_block(client, description: str, strategy: dict) -> str:
 
     if has_long and has_short:
         direction = "BOTH long AND short"
-        signal_template = """df['long_signal'] = <YOUR_LONG_CONDITION>.fillna(False)
-df['short_signal'] = <YOUR_SHORT_CONDITION>.fillna(False)
-df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)"""
+        signal_template = "df['long_signal'] = <YOUR_LONG_CONDITION>.fillna(False)\ndf['short_signal'] = <YOUR_SHORT_CONDITION>.fillna(False)\ndf['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)"
     elif has_short:
         direction = "SHORT only"
-        signal_template = """df['long_signal'] = pd.Series(False, index=df.index)
-df['short_signal'] = <YOUR_SHORT_CONDITION>.fillna(False)
-df['Signal'] = -df['short_signal'].astype(int)"""
+        signal_template = "df['long_signal'] = pd.Series(False, index=df.index)\ndf['short_signal'] = <YOUR_SHORT_CONDITION>.fillna(False)\ndf['Signal'] = -df['short_signal'].astype(int)"
     else:
         direction = "LONG only"
-        signal_template = """df['long_signal'] = <YOUR_LONG_CONDITION>.fillna(False)
-df['short_signal'] = pd.Series(False, index=df.index)
-df['Signal'] = df['long_signal'].astype(int)"""
+        signal_template = "df['long_signal'] = <YOUR_LONG_CONDITION>.fillna(False)\ndf['short_signal'] = pd.Series(False, index=df.index)\ndf['Signal'] = df['long_signal'].astype(int)"
 
     ind_hint = "Strategy type: " + stype + "\nIndicators: " + ', '.join(indicators) if indicators else 'detect from description'
     if params.get('ema_fast'):
@@ -839,19 +799,7 @@ df['Signal'] = df['long_signal'].astype(int)"""
     if params.get('rsi_period'):
         ind_hint += "\nRSI: " + str(params['rsi_period'])
 
-    prompt = """You are a Python quant developer. Translate this trading strategy into Python signal detection code.
-STRATEGY: \"""" + description + "\""""
-DIRECTION: """ + direction + """
-""" + ind_hint + """
-
-AVAILABLE FUNCTIONS:
-INDICATORS: add_ema, add_sma, add_rsi, add_macd, add_bollinger, add_atr, add_stochastic, add_vwap, add_obv, add_volume_spike, add_swing_highs_lows, add_candle_patterns, add_structure_break, add_fair_value_gaps, add_liquidity_levels, add_order_blocks, add_premium_discount, add_market_structure, add_optimal_trade_entry, add_equal_highs_lows, add_higher_highs_lower_lows, add_support_resistance, add_previous_day_levels, add_supertrend, add_cci, add_williams_r, add_mfi, add_donchian, add_keltner, add_inside_outside_bars, add_common_indicators, add_smc_indicators
-SIGNAL HELPERS: crossover, crossunder, above_level, below_level, rising, falling
-
-OUTPUT FORMAT:
-""" + signal_template + """
-RULES: First call add_*() for indicators, then write signal conditions. Both long_signal and short_signal MUST be assigned. df['Signal'] MUST be last line. Output ONLY Python lines — no imports, no def, no markdown.
-OUTPUT ONLY THE PYTHON LINES NOW:"""
+    prompt = "You are a Python quant developer. Translate this trading strategy into Python signal detection code.\nSTRATEGY: \"" + description + "\"\nDIRECTION: " + direction + "\n" + ind_hint + "\n\nAVAILABLE FUNCTIONS:\nINDICATORS: add_ema, add_sma, add_rsi, add_macd, add_bollinger, add_atr, add_stochastic, add_vwap, add_obv, add_volume_spike, add_swing_highs_lows, add_candle_patterns, add_structure_break, add_fair_value_gaps, add_liquidity_levels, add_order_blocks, add_premium_discount, add_market_structure, add_optimal_trade_entry, add_equal_highs_lows, add_higher_highs_lower_lows, add_support_resistance, add_previous_day_levels, add_supertrend, add_cci, add_williams_r, add_mfi, add_donchian, add_keltner, add_inside_outside_bars, add_common_indicators, add_smc_indicators\nSIGNAL HELPERS: crossover, crossunder, above_level, below_level, rising, falling\n\nOUTPUT FORMAT:\n" + signal_template + "\nRULES: First call add_*() for indicators, then write signal conditions. Both long_signal and short_signal MUST be assigned. df['Signal'] MUST be last line. Output ONLY Python lines - no imports, no def, no markdown.\nOUTPUT ONLY THE PYTHON LINES NOW:"
 
     try:
         response = client.chat.completions.create(
@@ -882,9 +830,9 @@ OUTPUT ONLY THE PYTHON LINES NOW:"""
         repaired = []
         for line in lines:
             line_str = str(line)
-            if (("long_signal'] =" in line_str or "long_signal'] =" in line_str) and 'fillna' not in line_str and 'pd.Series' not in line_str and 'astype' not in line_str:
+            if (("long_signal'] =" in line_str or "long_signal'] =" in line_str) and 'fillna' not in line_str and 'pd.Series' not in line_str and 'astype' not in line_str):
                 line_str = line_str.rstrip() + '.fillna(False)'
-            if (("short_signal'] =" in line_str or "short_signal'] =" in line_str) and 'fillna' not in line_str and 'pd.Series' not in line_str and 'astype' not in line_str:
+            if (("short_signal'] =" in line_str or "short_signal'] =" in line_str) and 'fillna' not in line_str and 'pd.Series' not in line_str and 'astype' not in line_str):
                 line_str = line_str.rstrip() + '.fillna(False)'
             repaired.append(line_str)
         lines = repaired
@@ -928,25 +876,18 @@ def generate_python_code(client, strategy: dict, symbol: str, description: str =
     trail_arg = "trail_pct=0.03" if has_trailing else "trail_pct=None"
     partial_arg = "partial_close_pct=0.3" if has_partial else "partial_close_pct=None"
 
-    # FIXED: Use regular string concatenation instead of triple-quoted f-string
-    code_part1 = """import requests
+    code = """import requests
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # Indicator Library
-"""
-    
-    code_part2 = lib_code
-    
-    code_part3 = """def fetch_data():
+""" + lib_code + """
+
+def fetch_data():
     try:
-        resp = requests.get("https://api.binance.com/api/v3/klines", params={"symbol": """"
-    
-    code_part4 = binance_sym
-    
-    code_part5 = """", "interval": "1d", "limit": 365}})
+        resp = requests.get("https://api.binance.com/api/v3/klines", params={"symbol": """ + binance_sym + """, "interval": "1d", "limit": 365}})
         resp.raise_for_status()
         raw = resp.json()
         df = pd.DataFrame(raw, columns=[
@@ -962,22 +903,11 @@ from plotly.subplots import make_subplots
         return None
 
 def generate_signals(df):
-"""
-    
-    code_part6 = signal_block
-    
-    code_part7 = """    df["Position"] = df["Signal"].shift(1).fillna(0)
+""" + signal_block + """
+    df["Position"] = df["Signal"].shift(1).fillna(0)
     return df
 
-def backtest(df, sl_pct="""
-    
-    code_part8 = str(sl_pct)
-    
-    code_part9 = """, tp_pct="""
-    
-    code_part10 = str(tp_pct)
-    
-    code_part11 = """, trail_pct=None, partial_close_pct=None):
+def backtest(df, sl_pct=""" + str(sl_pct) + """, tp_pct=""" + str(tp_pct) + """, trail_pct=None, partial_close_pct=None):
     df["Return"] = df["Close"].pct_change()
     if trail_pct is None:
         df["Commission"] = np.where(df["Position"] != df["Position"].shift(1), 0.001, 0)
@@ -1058,7 +988,9 @@ def plot_results(df):
     if not long_df.empty:
         fig.add_trace(go.Scatter(x=long_df.index, y=long_df['Close']*0.994, mode='markers', name='Long Entry', marker=dict(symbol='triangle-up', size=14, color='#4ade80', line=dict(color='#166534', width=1))), row=1, col=1)
         for date, row in long_df.iterrows():
-            entry, sl, tp = float(row['Close']), entry * (1 - sl_pct), entry * (1 + tp_pct)
+            entry = float(row['Close'])
+            sl = entry * (1 - sl_pct)
+            tp = entry * (1 + tp_pct)
             try:
                 end_date = df.index[min(df.index.get_loc(date)+8, len(df)-1)]
             except: end_date = date
@@ -1094,7 +1026,7 @@ def plot_results(df):
 
     fig.add_trace(go.Scatter(x=df["Open time"], y=df["Strategy_Equity"], name="Strategy", line=dict(color="#4ade80", width=2)), row=2, col=1)
     fig.add_trace(go.Scatter(x=df["Open time"], y=df["BH_Equity"], name="Buy & Hold", line=dict(color="#64748b", width=1.5, dash="dash")), row=2, col=1)
-    fig.update_layout(height=700, paper_bgcolor="#080a0f", plot_bgcolor="#0d0f14", xaxis_rangeslider_visible=False, font=dict(color="#a89060"), title=dict(text="<b>" + symbol + "</b> — " + summary + "<br><span style='font-size:11px;color:#6b5b3a'>" + str(n_long) + " Long  " + str(n_short) + " Short  | " + "Data Source" + " | Last 80 bars</span>", font=dict(color="#f59e0b", size=13), x=0.01))
+    fig.update_layout(height=700, paper_bgcolor="#080a0f", plot_bgcolor="#0d0f14", xaxis_rangeslider_visible=False, font=dict(color="#a89060"), title=dict(text="<b>" + symbol + "</b> - " + summary + "<br><span style='font-size:11px;color:#6b5b3a'>" + str(n_long) + " Long  " + str(n_short) + " Short  | Data Source | Last 80 bars</span>", font=dict(color="#f59e0b", size=13), x=0.01))
     fig.update_xaxes(gridcolor="#1e2030", zerolinecolor="#1e2030", tickfont=dict(color="#6b5b3a"))
     fig.update_yaxes(gridcolor="#1e2030", zerolinecolor="#1e2030", tickfont=dict(color="#6b5b3a"))
     return fig
@@ -1121,14 +1053,11 @@ def main():
 
 if __name__ == "__main__":
     main()
-'''
-    
-    code = code_part1 + code_part2 + code_part3 + code_part4 + code_part5 + code_part6 + code_part7 + code_part8 + code_part9 + code_part10 + code_part11
+"""
+
     return code
 
-# ═══════════════════════════════════════════════════════════════
 # INDICATORS
-# ═══════════════════════════════════════════════════════════════
 def add_indicators(df, params):
     df = df.copy()
     ef = params.get('ema_fast', 20)
@@ -1199,9 +1128,7 @@ def generate_signals(df, strategy, client=None, description=''):
         st.warning(f"Signal execution error: {e}. Using empty signals.")
     return df
 
-# ═══════════════════════════════════════════════════════════════
-# PLOTLY CHART - FIXED VERSION
-# ═══════════════════════════════════════════════════════════════
+# PLOTLY CHART
 def draw_chart(df, strategy, symbol, data_source, show='both'):
     df_plot = df.tail(80).copy()
     
@@ -1288,50 +1215,48 @@ def draw_chart(df, strategy, symbol, data_source, show='both'):
         legend=dict(bgcolor='#0d0f14', bordercolor='#1e2030', borderwidth=1, font=dict(color='#a89060', size=10)),
         xaxis_rangeslider_visible=False,
         margin=dict(l=50, r=80, t=70, b=40),
-        title=dict(text="<b>" + symbol + "</b> — " + strategy.get('summary','Strategy') + "<br><span style='font-size:11px;color:#6b5b3a'>" + str(n_long) + " Long  " + str(n_short) + " Short  | " + data_source + " | Last 80 bars</span>", font=dict(color='#f59e0b', size=13), x=0.01)
+        title=dict(text="<b>" + symbol + "</b> - " + strategy.get('summary','Strategy') + "<br><span style='font-size:11px;color:#6b5b3a'>" + str(n_long) + " Long  " + str(n_short) + " Short  | " + data_source + " | Last 80 bars</span>", font=dict(color='#f59e0b', size=13), x=0.01)
     )
     fig.update_xaxes(gridcolor='#1e2030', zerolinecolor='#1e2030', tickfont=dict(color='#6b5b3a'))
     fig.update_yaxes(gridcolor='#1e2030', zerolinecolor='#1e2030', tickfont=dict(color='#6b5b3a'))
     return fig
 
-# ═══════════════════════════════════════════════════════════════
 # MAIN APP
-# ═══════════════════════════════════════════════════════════════
 st.markdown("""
 <div class="main-header">
-    <h1>📈 STRATEGY VISUALIZER</h1>
-    <p>Describe your strategy → See it on real candles → Get Python code</p>
-    <p style="color:#3d2f00;font-family:'IBM Plex Mono';font-size:0.7rem">QUANT ALPHA · GROQ + BINANCE · INTERACTIVE · $0</p>
+    <h1>STRATEGY VISUALIZER</h1>
+    <p>Describe your strategy - See it on real candles - Get Python code</p>
+    <p style="color:#3d2f00;font-family:'IBM Plex Mono';font-size:0.7rem">QUANT ALPHA - GROQ + BINANCE - INTERACTIVE - $0</p>
 </div>""", unsafe_allow_html=True)
 
 client = init_llm()
 if not client:
-    st.error("⚠️ Add GROQ_API_KEY to Streamlit Secrets.")
+    st.error("Add GROQ_API_KEY to Streamlit Secrets.")
     st.stop()
 
 with st.sidebar:
-    st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.68rem;color:#f59e0b;letter-spacing:2px;text-transform:uppercase;border-bottom:1px solid #1e2030;padding-bottom:8px;margin-bottom:16px'>&TINGS</div>""", unsafe_allow_html=True)
+    st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.68rem;color:#f59e0b;letter-spacing:2px;text-transform:uppercase;border-bottom:1px solid #1e2030;padding-bottom:8px;margin-bottom:16px'>SETTINGS</div>""", unsafe_allow_html=True)
     symbol = st.selectbox("Asset", options=list(BINANCE_SYMBOLS.keys()), index=0)
     period = st.selectbox("Period", options=list(PERIOD_DAYS.keys()), index=1)
     st.markdown("---")
-    st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.65rem;color:#f59e0b;letter-spacing:1px;margin-bottom:8px'>📁 UPLOAD YOUR OWN DATA (OPTIONAL)</div>""", unsafe_allow_html=True)
+    st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.65rem;color:#f59e0b;letter-spacing:1px;margin-bottom:8px'>UPLOAD YOUR OWN DATA (OPTIONAL)</div>""", unsafe_allow_html=True)
     uploaded_file = st.file_uploader("CSV: Date, Open, High, Low, Close", type=['csv'], label_visibility="collapsed")
     if uploaded_file:
-        st.markdown("""<div class='data-source-box'>✅ CSV loaded — will use your data</div>""", unsafe_allow_html=True)
+        st.markdown("""<div class='data-source-box'>CSV loaded - will use your data</div>""", unsafe_allow_html=True)
     st.markdown("---")
-    st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.65rem;color:#3d2f00'><b style='color:#f59e0b'>DATA SOURCES:</b><br>1️⃣ Your CSV (if uploaded)<br>2️⃣ Binance API (auto)<br>3️⃣ CoinGecko (fallback)<br><br><b style='color:#f59e0b'>EXAMPLES:</b><br><br>"Buy BTC when 20 EMA crosses above 50 EMA. SL 2%, TP 6%."<br><br>"Long when RSI drops below 30. SL 3%, TP 9%."<br><br>"Short Bollinger lower breakout. SL 1.5%, TP 5%."</div>""", unsafe_allow_html=True)
+    st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.65rem;color:#3d2f00'><b style='color:#f59e0b'>DATA SOURCES:</b><br>1. Your CSV (if uploaded)<br>2. Binance API (auto)<br>3. CoinGecko (fallback)<br><br><b style='color:#f59e0b'>EXAMPLES:</b><br><br>"Buy BTC when 20 EMA crosses above 50 EMA. SL 2%, TP 6%."<br><br>"Long when RSI drops below 30. SL 3%, TP 9%."<br><br>"Short Bollinger lower breakout. SL 1.5%, TP 5%."</div>""", unsafe_allow_html=True)
 
 for key in ['parsed','df','fig_long','fig_short','code','data_source','description']:
     if key not in st.session_state:
         st.session_state[key] = None
 
-st.markdown('<div class="section-hdr">STEP 1 — DESCRIBE YOUR STRATEGY</div>', unsafe_allow_html=True)
-st.markdown("""<div class="step-card active"><div class="step-num">✏️ PLAIN ENGLISH — NO CODING NEEDED</div>Describe entry conditions, stop loss, and take profit. Only mention SHORT if you want short signals.</div>""", unsafe_allow_html=True)
+st.markdown('<div class="section-hdr">STEP 1 - DESCRIBE YOUR STRATEGY</div>', unsafe_allow_html=True)
+st.markdown("""<div class="step-card active"><div class="step-num">PLAIN ENGLISH - NO CODING NEEDED</div>Describe entry conditions, stop loss, and take profit. Only mention SHORT if you want short signals.</div>""", unsafe_allow_html=True)
 
 description = st.text_area("Strategy", placeholder="Buy BTC when the 20 EMA crosses above the 50 EMA. SL 2%, TP 6%.", height=100, label_visibility="collapsed")
 
 c1, c2 = st.columns([3,1])
-with c1: parse_btn = st.button("🧠 PARSE STRATEGY", use_container_width=True)
+with c1: parse_btn = st.button("PARSE STRATEGY", use_container_width=True)
 with c2: reset_btn = st.button("Reset", use_container_width=True)
 
 if reset_btn:
@@ -1340,7 +1265,7 @@ if reset_btn:
     st.rerun()
 
 if parse_btn and description.strip():
-    with st.spinner("🧠 Parsing..."):
+    with st.spinner("Parsing..."):
         parsed = parse_strategy(client, description)
     if parsed:
         st.session_state.parsed = parsed
@@ -1351,30 +1276,30 @@ if parse_btn and description.strip():
 
 if st.session_state.parsed:
     p = st.session_state.parsed
-    st.markdown('<div class="section-hdr">STEP 2 — CONFIRM UNDERSTANDING</div>', unsafe_allow_html=True)
-    st.markdown(f"""<div class="parsed-box"><b style='color:#f59e0b'>AI PARSED AS:</b><br><br><b>Summary:</b> {p.get('summary','—')}<br><b>Type:</b> {p.get('strategy_type','—').upper()}<br><b>Indicators:</b> {', '.join(p.get('indicators',[]))}</div>""", unsafe_allow_html=True)
+    st.markdown('<div class="section-hdr">STEP 2 - CONFIRM UNDERSTANDING</div>', unsafe_allow_html=True)
+    st.markdown(f"""<div class="parsed-box"><b style='color:#f59e0b'>AI PARSED AS:</b><br><br><b>Summary:</b> {p.get('summary','-')}<br><b>Type:</b> {p.get('strategy_type','-').upper()}<br><b>Indicators:</b> {', '.join(p.get('indicators',[]))}</div>""", unsafe_allow_html=True)
 
     sl_display = (p.get('sl_pct') or 0.01) * 100
     tp_display = (p.get('tp_pct') or 0.02) * 100
     for col, (cls, txt) in zip(st.columns(4), [
-        ('tag-entry', f"📈 LONG: {str(p.get('entry_long','—'))[:32]}"),
-        ('tag-entry', f"📉 SHORT: {str(p.get('entry_short','—'))[:32]}"),
-        ('tag-sl', f"🛑 SL: {sl_display:.1f}%" + ("  (default)" if p.get('sl_pct') is None else "")),
-        ('tag-tp', f"🎯 TP: {tp_display:.1f}%" + ("  (default)" if p.get('tp_pct') is None else "")),
+        ('tag-entry', f"LONG: {str(p.get('entry_long','-'))[:32]}"),
+        ('tag-entry', f"SHORT: {str(p.get('entry_short','-'))[:32]}"),
+        ('tag-sl', f"SL: {sl_display:.1f}%" + ("  (default)" if p.get('sl_pct') is None else "")),
+        ('tag-tp', f"TP: {tp_display:.1f}%" + ("  (default)" if p.get('tp_pct') is None else "")),
     ]):
         with col:
             st.markdown(f'<span class="tag {cls}">{txt}</span>', unsafe_allow_html=True)
 
     if p.get('sl_pct') is None or p.get('tp_pct') is None:
-        st.markdown("""<div style='background:#1c1400;border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin:10px 0;font-family:IBM Plex Mono;font-size:0.78rem;color:#f59e0b'>⚠️ <b>DEFAULT RISK APPLIED:</b> SL 1% · TP 2%<br><span style='color:#6b5b3a'>You didn't specify SL/TP. To change them, re-describe your strategy and include e.g. "stop loss 2%, take profit 6%"</span></div>""", unsafe_allow_html=True)
+        st.markdown("""<div style='background:#1c1400;border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin:10px 0;font-family:IBM Plex Mono;font-size:0.78rem;color:#f59e0b'>DEFAULT RISK APPLIED: SL 1% - TP 2%<br><span style='color:#6b5b3a'>You didn't specify SL/TP. To change them, re-describe your strategy and include e.g. "stop loss 2%, take profit 6%"</span></div>""", unsafe_allow_html=True)
 
     st.markdown("")
-    if st.button("📊 VISUALIZE ON REAL CANDLES", use_container_width=True):
-        with st.spinner("📡 Fetching market data..."):
+    if st.button("VISUALIZE ON REAL CANDLES", use_container_width=True):
+        with st.spinner("Fetching market data..."):
             df, source = fetch_data(symbol, period, uploaded_file)
         if df is not None and len(df) > 30:
-            st.markdown(f"""<div class="data-source-box">✅ {len(df)} candles from {source}</div>""", unsafe_allow_html=True)
-            with st.spinner("🎨 Building charts..."):
+            st.markdown(f"""<div class="data-source-box">{len(df)} candles from {source}</div>""", unsafe_allow_html=True)
+            with st.spinner("Building charts..."):
                 df = add_indicators(df, p.get('indicator_params', {}))
                 df = generate_signals(df, p, client=client, description=st.session_state.get('description',''))
                 st.session_state.df = df
@@ -1382,29 +1307,29 @@ if st.session_state.parsed:
                 st.session_state.fig_long = draw_chart(df, p, symbol, source, show='long')
                 st.session_state.fig_short = draw_chart(df, p, symbol, source, show='short')
         else:
-            st.error("Could not fetch data from any source. **Solution**: Upload a CSV file in the sidebar. Format: Date, Open, High, Low, Close columns.")
+            st.error("Could not fetch data from any source. Solution: Upload a CSV file in the sidebar. Format: Date, Open, High, Low, Close columns.")
 
 if st.session_state.get('fig_long') or st.session_state.get('fig_short'):
-    st.markdown('<div class="section-hdr">STEP 3 — YOUR SETUP — LONG & SHORT</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-hdr">STEP 3 - YOUR SETUP - LONG & SHORT</div>', unsafe_allow_html=True)
     col_l, col_r = st.columns(2)
     with col_l:
-        st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.75rem;color:#4ade80;letter-spacing:2px;margin-bottom:8px'>📈 LONG SETUP</div>""", unsafe_allow_html=True)
+        st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.75rem;color:#4ade80;letter-spacing:2px;margin-bottom:8px'>LONG SETUP</div>""", unsafe_allow_html=True)
         if st.session_state.get('fig_long'):
             st.plotly_chart(st.session_state.fig_long, use_container_width=True, config={'displayModeBar': True, 'scrollZoom': True})
     with col_r:
-        st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.75rem;color:#f87171;letter-spacing:2px;margin-bottom:8px'>📉 SHORT SETUP</div>""", unsafe_allow_html=True)
+        st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.75rem;color:#f87171;letter-spacing:2px;margin-bottom:8px'>SHORT SETUP</div>""", unsafe_allow_html=True)
         if st.session_state.get('fig_short'):
             n_short = int(st.session_state.df['short_signal'].sum()) if st.session_state.get('df') is not None else 0
             if n_short > 0:
                 st.plotly_chart(st.session_state.fig_short, use_container_width=True, config={'displayModeBar': True, 'scrollZoom': True})
             else:
-                st.markdown("""<div style='background:#0d0f14;border:1px solid #1e2030;border-radius:10px;padding:40px;text-align:center;font-family:IBM Plex Mono;color:#334155;font-size:0.8rem'>📉 No short signals detected<br><br><span style='color:#1e2030'>You didn't ask for short entries.<br>Re-describe with "short when..." to add them.</span></div>""", unsafe_allow_html=True)
+                st.markdown("""<div style='background:#0d0f14;border:1px solid #1e2030;border-radius:10px;padding:40px;text-align:center;font-family:IBM Plex Mono;color:#334155;font-size:0.8rem'>No short signals detected<br><br><span style='color:#1e2030'>You didn't ask for short entries.<br>Re-describe with "short when..." to add them.</span></div>""", unsafe_allow_html=True)
 
-    st.markdown("""<div style='text-align:center;font-family:IBM Plex Mono;font-size:0.78rem;color:#a89060;margin:12px 0'>🔺 Green triangles = Long entries &nbsp;|&nbsp; 🔻 Red triangles = Short entries<br>Dashed = Stop Loss &nbsp;|&nbsp; Dotted = Take Profit</div>""", unsafe_allow_html=True)
+    st.markdown("""<div style='text-align:center;font-family:IBM Plex Mono;font-size:0.78rem;color:#a89060;margin:12px 0'>Green triangles = Long entries | Red triangles = Short entries<br>Dashed = Stop Loss | Dotted = Take Profit</div>""", unsafe_allow_html=True)
 
     cy, cn = st.columns(2)
-    with cy: yes_btn = st.button("✅ YES — Generate Python Code", use_container_width=True)
-    with cn: no_btn = st.button("❌ NO — Redescribe", use_container_width=True)
+    with cy: yes_btn = st.button("YES - Generate Python Code", use_container_width=True)
+    with cn: no_btn = st.button("NO - Redescribe", use_container_width=True)
 
     if no_btn:
         st.session_state.fig_long = None
@@ -1412,14 +1337,14 @@ if st.session_state.get('fig_long') or st.session_state.get('fig_short'):
         st.session_state.code = None
         st.info("Refine your description in Step 1.")
     if yes_btn:
-        with st.spinner("& Generating code..."):
+        with st.spinner("Generating code..."):
             st.session_state.code = generate_python_code(client, st.session_state.parsed, symbol, description=st.session_state.get('description', ''))
 
 if st.session_state.code:
-    st.markdown('<div class="section-hdr">STEP 4 — YOUR PYTHON CODE</div>', unsafe_allow_html=True)
-    st.markdown("""<div class="step-card done"><div class="step-num">✅ READY — RUN IN COLAB OR JUPYTER</div>Then paste into <b>Backtest Validator</b> to check for errors.</div>""", unsafe_allow_html=True)
+    st.markdown('<div class="section-hdr">STEP 4 - YOUR PYTHON CODE</div>', unsafe_allow_html=True)
+    st.markdown("""<div class="step-card done"><div class="step-num">READY - RUN IN COLAB OR JUPYTER</div>Then paste into Backtest Validator to check for errors.</div>""", unsafe_allow_html=True)
     st.text_area("Code", value=st.session_state.code, height=320, label_visibility="collapsed")
-    st.download_button("⬇️ Download .py file", data=st.session_state.code, file_name=f"{symbol}_strategy.py", mime="text/plain", use_container_width=True)
-    st.markdown("""<div style='background:#0d0f14;border:1px solid #f59e0b;border-radius:10px;padding:16px;margin-top:16px;text-align:center'><b style='font-family:IBM Plex Mono;color:#f59e0b'>⚠️ VALIDATE BEFORE TRADING LIVE</b><br><span style='font-family:IBM Plex Mono;color:#6b5b3a;font-size:0.8rem'>Paste code into <b style='color:#e8e0d0'>Backtest Validator</b> to detect lookahead bias and overfitting</span></div>""", unsafe_allow_html=True)
+    st.download_button("Download .py file", data=st.session_state.code, file_name=f"{symbol}_strategy.py", mime="text/plain", use_container_width=True)
+    st.markdown("""<div style='background:#0d0f14;border:1px solid #f59e0b;border-radius:10px;padding:16px;margin-top:16px;text-align:center'><b style='font-family:IBM Plex Mono;color:#f59e0b'>VALIDATE BEFORE TRADING LIVE</b><br><span style='font-family:IBM Plex Mono;color:#6b5b3a;font-size:0.8rem'>Paste code into Backtest Validator to detect lookahead bias and overfitting</span></div>""", unsafe_allow_html=True)
 
-st.markdown("""<div style="text-align:center;margin-top:48px;padding:16px;border-top:1px solid #1e2030"><span style="font-family:IBM Plex Mono;font-size:0.65rem;color:#1e2030">QUANT ALPHA — NOT FINANCIAL ADVICE</span></div>""", unsafe_allow_html=True)
+st.markdown("""<div style="text-align:center;margin-top:48px;padding:16px;border-top:1px solid #1e2030"><span style="font-family:IBM Plex Mono;font-size:0.65rem;color:#1e2030">QUANT ALPHA - NOT FINANCIAL ADVICE</span></div>""", unsafe_allow_html=True)
