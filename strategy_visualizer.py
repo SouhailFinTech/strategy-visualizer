@@ -749,11 +749,11 @@ def fetch_data(symbol, period, uploaded_file=None):
 # GROQ HELPERS
 # ═══════════════════════════════════════════════════════════════
 def parse_strategy(client, description: str):
-    prompt = f"""You are a quantitative trading expert.
+    prompt = """You are a quantitative trading expert.
 Parse this trading strategy into structured JSON.
-Strategy: "{description}"
+Strategy: \"""" + description + "\""""
 Return ONLY valid JSON:
-{{
+{
   "entry_long": "long entry condition or null if no long",
   "entry_short": "short entry condition or null if no short",
   "stop_loss": "stop loss description",
@@ -762,9 +762,9 @@ Return ONLY valid JSON:
   "strategy_type": "trend or mean-reversion or breakout or momentum",
   "sl_pct": 0.02,
   "tp_pct": 0.06,
-  "indicator_params": {{"ema_fast": 20, "ema_slow": 50, "rsi_period": 14, "rsi_overbought": 70, "rsi_oversold": 30}},
+  "indicator_params": {"ema_fast": 20, "ema_slow": 50, "rsi_period": 14, "rsi_overbought": 70, "rsi_oversold": 30},
   "summary": "one sentence summary"
-}}
+}
 IMPORTANT: If user only says BUY/LONG — set entry_short to null. If user only says SELL/SHORT — set entry_long to null."""
 
     try:
@@ -831,25 +831,25 @@ df['Signal'] = -df['short_signal'].astype(int)"""
 df['short_signal'] = pd.Series(False, index=df.index)
 df['Signal'] = df['long_signal'].astype(int)"""
 
-    ind_hint = f"Strategy type: {stype}\nIndicators: {', '.join(indicators) if indicators else 'detect from description'}"
+    ind_hint = "Strategy type: " + stype + "\nIndicators: " + ', '.join(indicators) if indicators else 'detect from description'
     if params.get('ema_fast'):
-        ind_hint += f"\nEMA fast: {params['ema_fast']}"
+        ind_hint += "\nEMA fast: " + str(params['ema_fast'])
     if params.get('ema_slow'):
-        ind_hint += f"\nEMA slow: {params['ema_slow']}"
+        ind_hint += "\nEMA slow: " + str(params['ema_slow'])
     if params.get('rsi_period'):
-        ind_hint += f"\nRSI: {params['rsi_period']}"
+        ind_hint += "\nRSI: " + str(params['rsi_period'])
 
-    prompt = f"""You are a Python quant developer. Translate this trading strategy into Python signal detection code.
-STRATEGY: "{description}"
-DIRECTION: {direction}
-{ind_hint}
+    prompt = """You are a Python quant developer. Translate this trading strategy into Python signal detection code.
+STRATEGY: \"""" + description + "\""""
+DIRECTION: """ + direction + """
+""" + ind_hint + """
 
 AVAILABLE FUNCTIONS:
 INDICATORS: add_ema, add_sma, add_rsi, add_macd, add_bollinger, add_atr, add_stochastic, add_vwap, add_obv, add_volume_spike, add_swing_highs_lows, add_candle_patterns, add_structure_break, add_fair_value_gaps, add_liquidity_levels, add_order_blocks, add_premium_discount, add_market_structure, add_optimal_trade_entry, add_equal_highs_lows, add_higher_highs_lower_lows, add_support_resistance, add_previous_day_levels, add_supertrend, add_cci, add_williams_r, add_mfi, add_donchian, add_keltner, add_inside_outside_bars, add_common_indicators, add_smc_indicators
 SIGNAL HELPERS: crossover, crossunder, above_level, below_level, rising, falling
 
 OUTPUT FORMAT:
-{signal_template}
+""" + signal_template + """
 RULES: First call add_*() for indicators, then write signal conditions. Both long_signal and short_signal MUST be assigned. df['Signal'] MUST be last line. Output ONLY Python lines — no imports, no def, no markdown.
 OUTPUT ONLY THE PYTHON LINES NOW:"""
 
@@ -897,7 +897,7 @@ OUTPUT ONLY THE PYTHON LINES NOW:"""
             sig = "    df['Signal'] = -df['short_signal'].astype(int)"
         else:
             sig = "    df['Signal'] = df['long_signal'].astype(int)"
-        return f"    df['long_signal'] = pd.Series(False, index=df.index)\n    df['short_signal'] = pd.Series(False, index=df.index)\n{sig}\n    # Signal generation failed: {e}"
+        return "    df['long_signal'] = pd.Series(False, index=df.index)\n    df['short_signal'] = pd.Series(False, index=df.index)\n" + sig + "\n    # Signal generation failed: " + str(e)
 
 def generate_python_code(client, strategy: dict, symbol: str, description: str = '') -> str:
     binance_sym = BINANCE_SYMBOLS.get(symbol.upper(), 'BTCUSDT')
@@ -928,18 +928,25 @@ def generate_python_code(client, strategy: dict, symbol: str, description: str =
     trail_arg = "trail_pct=0.03" if has_trailing else "trail_pct=None"
     partial_arg = "partial_close_pct=0.3" if has_partial else "partial_close_pct=None"
 
-    code = f'''import requests
+    # FIXED: Use regular string concatenation instead of triple-quoted f-string
+    code_part1 = """import requests
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # Indicator Library
-{lib_code}
-
-def fetch_data():
+"""
+    
+    code_part2 = lib_code
+    
+    code_part3 = """def fetch_data():
     try:
-        resp = requests.get("https://api.binance.com/api/v3/klines", params={{"symbol": "{binance_sym}", "interval": "1d", "limit": 365}})
+        resp = requests.get("https://api.binance.com/api/v3/klines", params={"symbol": """"
+    
+    code_part4 = binance_sym
+    
+    code_part5 = """", "interval": "1d", "limit": 365}})
         resp.raise_for_status()
         raw = resp.json()
         df = pd.DataFrame(raw, columns=[
@@ -951,15 +958,26 @@ def fetch_data():
             df[col] = pd.to_numeric(df[col])
         return df.drop(columns=["ct","qv","nt","tbb","tbq","ignore"])
     except Exception as e:
-        print(f"Data error: {{e}}")
+        print(f"Data error: {e}")
         return None
 
 def generate_signals(df):
-{signal_block}
-    df["Position"] = df["Signal"].shift(1).fillna(0)
+"""
+    
+    code_part6 = signal_block
+    
+    code_part7 = """    df["Position"] = df["Signal"].shift(1).fillna(0)
     return df
 
-def backtest(df, sl_pct={sl_pct}, tp_pct={tp_pct}, trail_pct=None, partial_close_pct=None):
+def backtest(df, sl_pct="""
+    
+    code_part8 = str(sl_pct)
+    
+    code_part9 = """, tp_pct="""
+    
+    code_part10 = str(tp_pct)
+    
+    code_part11 = """, trail_pct=None, partial_close_pct=None):
     df["Return"] = df["Close"].pct_change()
     if trail_pct is None:
         df["Commission"] = np.where(df["Position"] != df["Position"].shift(1), 0.001, 0)
@@ -1033,7 +1051,374 @@ def plot_results(df):
                 fig.add_trace(go.Scatter(x=df["Open time"], y=df["BB_Upper"], name="BB Upper", line=dict(color="#f59e0b", width=1, dash="dash"), opacity=0.6), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df["Open time"], y=df["BB_Lower"], name="BB Lower", line=dict(color="#f59e0b", width=1, dash="dash"), fill="tonexty", fillcolor="rgba(245,158,11,0.05)", opacity=0.6), row=1, col=1)
             elif col not in ['BB_Lower','BB_Mid']:
-                fig.add_trace(go.Scatter(x=df["Open time"], y=df[col], name=col, line=dict(color=colors[i % len(colorssession_state.code, height=320, label_visibility="collapsed")
+                fig.add_trace(go.Scatter(x=df["Open time"], y=df[col], name=col, line=dict(color=colors[i % len(colors)], width=1.5), opacity=0.9), row=1, col=1)
+    rsi_cols = [c for c in df.columns if c.startswith('RSI_')]
+    has_rsi = len(rsi_cols) > 0
+    long_df = df[df['long_signal']] if 'long_signal' in df.columns else df.iloc[0:0]
+    if not long_df.empty:
+        fig.add_trace(go.Scatter(x=long_df.index, y=long_df['Close']*0.994, mode='markers', name='Long Entry', marker=dict(symbol='triangle-up', size=14, color='#4ade80', line=dict(color='#166534', width=1))), row=1, col=1)
+        for date, row in long_df.iterrows():
+            entry, sl, tp = float(row['Close']), entry * (1 - sl_pct), entry * (1 + tp_pct)
+            try:
+                end_date = df.index[min(df.index.get_loc(date)+8, len(df)-1)]
+            except: end_date = date
+            fig.add_shape(type='line', x0=date, x1=end_date, y0=sl, y1=sl, line=dict(color='#ef4444', width=1.2, dash='dash'), row=1, col=1)
+            fig.add_shape(type='line', x0=date, x1=end_date, y0=tp, y1=tp, line=dict(color='#4ade80', width=1.2, dash='dot'), row=1, col=1)
+    short_df = df[df['short_signal']] if 'short_signal' in df.columns else df.iloc[0:0]
+    if not short_df.empty:
+        fig.add_trace(go.Scatter(x=short_df.index, y=short_df['Close']*1.006, mode='markers', name='Short Entry', marker=dict(symbol='triangle-down', size=14, color='#f87171', line=dict(color='#991b1b', width=1))), row=1, col=1)
+        for date, row in short_df.iterrows():
+            entry = float(row['Close'])
+            sl = entry * (1 + sl_pct)
+            tp = entry * (1 - tp_pct)
+            try:
+                end_date = df.index[min(df.index.get_loc(date)+8, len(df)-1)]
+            except: end_date = date
+            fig.add_shape(type='line', x0=date, x1=end_date, y0=sl, y1=sl, line=dict(color='#ef4444', width=1.2, dash='dash'), row=1, col=1)
+            fig.add_shape(type='line', x0=date, x1=end_date, y0=tp, y1=tp, line=dict(color='#4ade80', width=1.2, dash='dot'), row=1, col=1)
+    
+    if 'Volume' in df.columns and df['Volume'].sum() > 0:
+        bar_colors_list = ['#26a69a' if c >= o else '#ef5350' for c, o in zip(df['Close'], df['Open'])]
+        unique_colors = []
+        seen_indices = set()
+        for i, color in enumerate(bar_colors_list):
+            if i not in seen_indices:
+                unique_colors.append(color)
+                seen_indices.add(i)
+        fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume', marker_color=unique_colors, opacity=0.6), row=2, col=1)
+    elif has_rsi:
+        rsi_col = rsi_cols[0]
+        fig.add_trace(go.Scatter(x=df.index, y=df[rsi_col], name=rsi_col, line=dict(color='#a78bfa', width=1.5)), row=2, col=1)
+        fig.add_hline(y=70, line_color='#ef4444', line_dash='dash', line_width=1, opacity=0.6, row=2, col=1)
+        fig.add_hline(y=30, line_color='#4ade80', line_dash='dash', line_width=1, opacity=0.6, row=2, col=1)
+
+    fig.add_trace(go.Scatter(x=df["Open time"], y=df["Strategy_Equity"], name="Strategy", line=dict(color="#4ade80", width=2)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df["Open time"], y=df["BH_Equity"], name="Buy & Hold", line=dict(color="#64748b", width=1.5, dash="dash")), row=2, col=1)
+    fig.update_layout(height=700, paper_bgcolor="#080a0f", plot_bgcolor="#0d0f14", xaxis_rangeslider_visible=False, font=dict(color="#a89060"), title=dict(text="<b>" + symbol + "</b> — " + summary + "<br><span style='font-size:11px;color:#6b5b3a'>" + str(n_long) + " Long  " + str(n_short) + " Short  | " + "Data Source" + " | Last 80 bars</span>", font=dict(color="#f59e0b", size=13), x=0.01))
+    fig.update_xaxes(gridcolor="#1e2030", zerolinecolor="#1e2030", tickfont=dict(color="#6b5b3a"))
+    fig.update_yaxes(gridcolor="#1e2030", zerolinecolor="#1e2030", tickfont=dict(color="#6b5b3a"))
+    return fig
+
+def main():
+    df = fetch_data()
+    if df is None:
+        print("Failed to fetch data.")
+        return
+    df = generate_signals(df)
+    df = backtest(df, trail_pct=None, partial_close_pct=None)
+    sharpe, max_dd, win_rate, total_r, n_trades = metrics(df)
+    print("=" * 50)
+    print("  " + summary)
+    print("=" * 50)
+    print("  Sharpe Ratio : {:.2f}".format(sharpe))
+    print("  Max Drawdown : {:.1%}".format(max_dd))
+    print("  Win Rate     : {:.1%}".format(win_rate))
+    print("  Total Return : {:.1%}".format(total_r))
+    print("  Trades       : " + str(n_trades))
+    print("=" * 50)
+    fig = plot_results(df)
+    fig.show()
+
+if __name__ == "__main__":
+    main()
+'''
+    
+    code = code_part1 + code_part2 + code_part3 + code_part4 + code_part5 + code_part6 + code_part7 + code_part8 + code_part9 + code_part10 + code_part11
+    return code
+
+# ═══════════════════════════════════════════════════════════════
+# INDICATORS
+# ═══════════════════════════════════════════════════════════════
+def add_indicators(df, params):
+    df = df.copy()
+    ef = params.get('ema_fast', 20)
+    es = params.get('ema_slow', 50)
+    rp = params.get('rsi_period', 14)
+    df['EMA_fast'] = df['Close'].ewm(span=ef, adjust=False).mean()
+    df['EMA_slow'] = df['Close'].ewm(span=es, adjust=False).mean()
+    delta = df['Close'].diff()
+    gain = delta.clip(lower=0).rolling(rp).mean()
+    loss = (-delta.clip(upper=0)).rolling(rp).mean()
+    rs = gain / loss.replace(0, np.nan)
+    df['RSI'] = 100 - (100 / (1 + rs))
+    df['BB_mid'] = df['Close'].rolling(20).mean()
+    std = df['Close'].rolling(20).std()
+    df['BB_upper'] = df['BB_mid'] + 2 * std
+    df['BB_lower'] = df['BB_mid'] - 2 * std
+    return df
+
+def generate_signals(df, strategy, client=None, description=''):
+    df = df.copy()
+    df['long_signal'] = pd.Series(False, index=df.index)
+    df['short_signal'] = pd.Series(False, index=df.index)
+    df['Signal'] = pd.Series(0, index=df.index)
+    
+    if not client or not description:
+        p = strategy.get('indicator_params', {}) or {}
+        stype = strategy.get('strategy_type', 'trend')
+        wants_long = strategy.get('entry_long') is not None
+        wants_short = strategy.get('entry_short') is not None
+        if 'EMA_fast' in df.columns and 'EMA_slow' in df.columns:
+            if wants_long:
+                df['long_signal'] = ((df['EMA_fast'] > df['EMA_slow']) & (df['EMA_fast'].shift(1) <= df['EMA_slow'].shift(1))).fillna(False)
+            if wants_short:
+                df['short_signal'] = ((df['EMA_fast'] < df['EMA_slow']) & (df['EMA_fast'].shift(1) >= df['EMA_slow'].shift(1))).fillna(False)
+        df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)
+        return df
+    
+    signal_block = generate_signal_block(client, description, strategy)
+    exec_globals = {
+        'df': df, 'pd': pd, 'np': np,
+        'add_ema': add_ema, 'add_sma': add_sma, 'add_rsi': add_rsi, 'add_macd': add_macd,
+        'add_bollinger': add_bollinger, 'add_atr': add_atr, 'add_stochastic': add_stochastic,
+        'add_vwap': add_vwap, 'add_obv': add_obv, 'add_volume_spike': add_volume_spike,
+        'add_volume_sma': add_volume_sma, 'add_wma': add_wma, 'add_swing_highs_lows': add_swing_highs_lows,
+        'add_candle_patterns': add_candle_patterns, 'add_structure_break': add_structure_break,
+        'add_fair_value_gaps': add_fair_value_gaps, 'add_liquidity_levels': add_liquidity_levels,
+        'add_order_blocks': add_order_blocks, 'add_premium_discount': add_premium_discount,
+        'add_market_structure': add_market_structure, 'add_optimal_trade_entry': add_optimal_trade_entry,
+        'add_equal_highs_lows': add_equal_highs_lows, 'add_higher_highs_lower_lows': add_higher_highs_lower_lows,
+        'add_support_resistance': add_support_resistance, 'add_previous_day_levels': add_previous_day_levels,
+        'add_supertrend': add_supertrend, 'add_cci': add_cci, 'add_williams_r': add_williams_r,
+        'add_mfi': add_mfi, 'add_donchian': add_donchian, 'add_keltner': add_keltner,
+        'add_inside_outside_bars': add_inside_outside_bars, 'add_common_indicators': add_common_indicators,
+        'add_smc_indicators': add_smc_indicators, 'crossover': crossover, 'crossunder': crossunder,
+        'above_level': above_level, 'below_level': below_level, 'rising': rising, 'falling': falling,
+    }
+    clean_block = '\n'.join(line[4:] if line.startswith('    ') else line for line in signal_block.splitlines())
+    try:
+        exec(clean_block, exec_globals)
+        df = exec_globals['df']
+        if 'long_signal' in df.columns:
+            df['long_signal'] = df['long_signal'].fillna(False).astype(bool)
+        if 'short_signal' in df.columns:
+            df['short_signal'] = df['short_signal'].fillna(False).astype(bool)
+        if 'Signal' not in df.columns:
+            df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)
+    except Exception as e:
+        st.warning(f"Signal execution error: {e}. Using empty signals.")
+    return df
+
+# ═══════════════════════════════════════════════════════════════
+# PLOTLY CHART - FIXED VERSION
+# ═══════════════════════════════════════════════════════════════
+def draw_chart(df, strategy, symbol, data_source, show='both'):
+    df_plot = df.tail(80).copy()
+    
+    df_plot = clean_duplicate_columns(df_plot)
+    df_plot = clean_duplicate_index(df_plot)
+    
+    sl_pct = strategy.get('sl_pct') or 0.02
+    tp_pct = strategy.get('tp_pct') or 0.06
+    stype = strategy.get('strategy_type', 'trend')
+    params = strategy.get('indicator_params', {})
+    ef_span = params.get('ema_fast', 20)
+    es_span = params.get('ema_slow', 50)
+
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.75, 0.25])
+
+    fig.add_trace(go.Candlestick(
+        x=df_plot.index, open=df_plot['Open'], high=df_plot['High'],
+        low=df_plot['Low'], close=df_plot['Close'], name='Price',
+        increasing_line_color='#26a69a', decreasing_line_color='#ef5350',
+        increasing_fillcolor='#26a69a', decreasing_fillcolor='#ef5350',
+    ), row=1, col=1)
+
+    ind_prefixes = ['EMA_','SMA_','BB_','RSI_','MACD','Stoch','ATR_','WMA_','VWAP','KC_','DC_','Supertrend']
+    ind_cols = [c for c in df_plot.columns if any(c.startswith(p) for p in ind_prefixes) and c not in ['BB_Pct','BB_Width']]
+    colors_ind = ['#f59e0b','#60a5fa','#a78bfa','#34d399','#f472b6','#fb923c']
+    for i, col in enumerate(ind_cols[:6]):
+        if col in df_plot.columns and not df_plot[col].isna().all():
+            if col == 'BB_Upper' and 'BB_Lower' in df_plot.columns:
+                fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['BB_Upper'], name='BB Upper', line=dict(color='#f59e0b', width=1, dash='dash'), opacity=0.6), row=1, col=1)
+                fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['BB_Lower'], name='BB Lower', line=dict(color='#f59e0b', width=1, dash='dash'), fill='tonexty', fillcolor='rgba(245,158,11,0.05)', opacity=0.6), row=1, col=1)
+            elif col not in ['BB_Lower','BB_Mid']:
+                fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot[col], name=col, line=dict(color=colors_ind[i % len(colors_ind)], width=1.5), opacity=0.9), row=1, col=1)
+
+    rsi_cols = [c for c in df_plot.columns if c.startswith('RSI_')]
+    has_rsi = len(rsi_cols) > 0
+
+    long_df = df_plot[df_plot['long_signal']] if show in ('long', 'both') else df_plot.iloc[0:0]
+    if not long_df.empty:
+        fig.add_trace(go.Scatter(x=long_df.index, y=long_df['Close']*0.994, mode='markers', name='Long Entry', marker=dict(symbol='triangle-up', size=14, color='#4ade80', line=dict(color='#166534', width=1))), row=1, col=1)
+        for date, row in long_df.iterrows():
+            entry = float(row['Close'])
+            sl = entry * (1 - sl_pct)
+            tp = entry * (1 + tp_pct)
+            try:
+                end_date = df_plot.index[min(df_plot.index.get_loc(date)+8, len(df_plot)-1)]
+            except: end_date = date
+            fig.add_shape(type='line', x0=date, x1=end_date, y0=sl, y1=sl, line=dict(color='#ef4444', width=1.2, dash='dash'), row=1, col=1)
+            fig.add_shape(type='line', x0=date, x1=end_date, y0=tp, y1=tp, line=dict(color='#4ade80', width=1.2, dash='dot'), row=1, col=1)
+
+    short_df = df_plot[df_plot['short_signal']] if show in ('short', 'both') else df_plot.iloc[0:0]
+    if not short_df.empty:
+        fig.add_trace(go.Scatter(x=short_df.index, y=short_df['Close']*1.006, mode='markers', name='Short Entry', marker=dict(symbol='triangle-down', size=14, color='#f87171', line=dict(color='#991b1b', width=1))), row=1, col=1)
+        for date, row in short_df.iterrows():
+            entry = float(row['Close'])
+            sl = entry * (1 + sl_pct)
+            tp = entry * (1 - tp_pct)
+            try:
+                end_date = df_plot.index[min(df_plot.index.get_loc(date)+8, len(df_plot)-1)]
+            except: end_date = date
+            fig.add_shape(type='line', x0=date, x1=end_date, y0=sl, y1=sl, line=dict(color='#ef4444', width=1.2, dash='dash'), row=1, col=1)
+            fig.add_shape(type='line', x0=date, x1=end_date, y0=tp, y1=tp, line=dict(color='#4ade80', width=1.2, dash='dot'), row=1, col=1)
+
+    if 'Volume' in df_plot.columns and df_plot['Volume'].sum() > 0:
+        bar_colors_list = ['#26a69a' if c >= o else '#ef5350' for c, o in zip(df_plot['Close'], df_plot['Open'])]
+        unique_colors = []
+        seen = set()
+        for i, color in enumerate(bar_colors_list):
+            if i not in seen:
+                unique_colors.append(color)
+                seen.add(i)
+        fig.add_trace(go.Bar(x=df_plot.index, y=df_plot['Volume'], name='Volume', marker_color=unique_colors, opacity=0.6), row=2, col=1)
+    elif has_rsi:
+        rsi_col = rsi_cols[0]
+        fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot[rsi_col], name=rsi_col, line=dict(color='#a78bfa', width=1.5)), row=2, col=1)
+        fig.add_hline(y=70, line_color='#ef4444', line_dash='dash', line_width=1, opacity=0.6, row=2, col=1)
+        fig.add_hline(y=30, line_color='#4ade80', line_dash='dash', line_width=1, opacity=0.6, row=2, col=1)
+
+    n_long = len(long_df)
+    n_short = len(short_df)
+
+    fig.update_layout(
+        height=620, paper_bgcolor='#080a0f', plot_bgcolor='#0d0f14',
+        font=dict(family='IBM Plex Mono', color='#a89060', size=11),
+        legend=dict(bgcolor='#0d0f14', bordercolor='#1e2030', borderwidth=1, font=dict(color='#a89060', size=10)),
+        xaxis_rangeslider_visible=False,
+        margin=dict(l=50, r=80, t=70, b=40),
+        title=dict(text="<b>" + symbol + "</b> — " + strategy.get('summary','Strategy') + "<br><span style='font-size:11px;color:#6b5b3a'>" + str(n_long) + " Long  " + str(n_short) + " Short  | " + data_source + " | Last 80 bars</span>", font=dict(color='#f59e0b', size=13), x=0.01)
+    )
+    fig.update_xaxes(gridcolor='#1e2030', zerolinecolor='#1e2030', tickfont=dict(color='#6b5b3a'))
+    fig.update_yaxes(gridcolor='#1e2030', zerolinecolor='#1e2030', tickfont=dict(color='#6b5b3a'))
+    return fig
+
+# ═══════════════════════════════════════════════════════════════
+# MAIN APP
+# ═══════════════════════════════════════════════════════════════
+st.markdown("""
+<div class="main-header">
+    <h1>📈 STRATEGY VISUALIZER</h1>
+    <p>Describe your strategy → See it on real candles → Get Python code</p>
+    <p style="color:#3d2f00;font-family:'IBM Plex Mono';font-size:0.7rem">QUANT ALPHA · GROQ + BINANCE · INTERACTIVE · $0</p>
+</div>""", unsafe_allow_html=True)
+
+client = init_llm()
+if not client:
+    st.error("⚠️ Add GROQ_API_KEY to Streamlit Secrets.")
+    st.stop()
+
+with st.sidebar:
+    st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.68rem;color:#f59e0b;letter-spacing:2px;text-transform:uppercase;border-bottom:1px solid #1e2030;padding-bottom:8px;margin-bottom:16px'>&TINGS</div>""", unsafe_allow_html=True)
+    symbol = st.selectbox("Asset", options=list(BINANCE_SYMBOLS.keys()), index=0)
+    period = st.selectbox("Period", options=list(PERIOD_DAYS.keys()), index=1)
+    st.markdown("---")
+    st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.65rem;color:#f59e0b;letter-spacing:1px;margin-bottom:8px'>📁 UPLOAD YOUR OWN DATA (OPTIONAL)</div>""", unsafe_allow_html=True)
+    uploaded_file = st.file_uploader("CSV: Date, Open, High, Low, Close", type=['csv'], label_visibility="collapsed")
+    if uploaded_file:
+        st.markdown("""<div class='data-source-box'>✅ CSV loaded — will use your data</div>""", unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.65rem;color:#3d2f00'><b style='color:#f59e0b'>DATA SOURCES:</b><br>1️⃣ Your CSV (if uploaded)<br>2️⃣ Binance API (auto)<br>3️⃣ CoinGecko (fallback)<br><br><b style='color:#f59e0b'>EXAMPLES:</b><br><br>"Buy BTC when 20 EMA crosses above 50 EMA. SL 2%, TP 6%."<br><br>"Long when RSI drops below 30. SL 3%, TP 9%."<br><br>"Short Bollinger lower breakout. SL 1.5%, TP 5%."</div>""", unsafe_allow_html=True)
+
+for key in ['parsed','df','fig_long','fig_short','code','data_source','description']:
+    if key not in st.session_state:
+        st.session_state[key] = None
+
+st.markdown('<div class="section-hdr">STEP 1 — DESCRIBE YOUR STRATEGY</div>', unsafe_allow_html=True)
+st.markdown("""<div class="step-card active"><div class="step-num">✏️ PLAIN ENGLISH — NO CODING NEEDED</div>Describe entry conditions, stop loss, and take profit. Only mention SHORT if you want short signals.</div>""", unsafe_allow_html=True)
+
+description = st.text_area("Strategy", placeholder="Buy BTC when the 20 EMA crosses above the 50 EMA. SL 2%, TP 6%.", height=100, label_visibility="collapsed")
+
+c1, c2 = st.columns([3,1])
+with c1: parse_btn = st.button("🧠 PARSE STRATEGY", use_container_width=True)
+with c2: reset_btn = st.button("Reset", use_container_width=True)
+
+if reset_btn:
+    for key in ['parsed','df','fig_long','fig_short','code','data_source','description']:
+        st.session_state[key] = None
+    st.rerun()
+
+if parse_btn and description.strip():
+    with st.spinner("🧠 Parsing..."):
+        parsed = parse_strategy(client, description)
+    if parsed:
+        st.session_state.parsed = parsed
+        st.session_state.description = description
+        st.session_state.fig = None
+        st.session_state.code = None
+        st.session_state.data_source = None
+
+if st.session_state.parsed:
+    p = st.session_state.parsed
+    st.markdown('<div class="section-hdr">STEP 2 — CONFIRM UNDERSTANDING</div>', unsafe_allow_html=True)
+    st.markdown(f"""<div class="parsed-box"><b style='color:#f59e0b'>AI PARSED AS:</b><br><br><b>Summary:</b> {p.get('summary','—')}<br><b>Type:</b> {p.get('strategy_type','—').upper()}<br><b>Indicators:</b> {', '.join(p.get('indicators',[]))}</div>""", unsafe_allow_html=True)
+
+    sl_display = (p.get('sl_pct') or 0.01) * 100
+    tp_display = (p.get('tp_pct') or 0.02) * 100
+    for col, (cls, txt) in zip(st.columns(4), [
+        ('tag-entry', f"📈 LONG: {str(p.get('entry_long','—'))[:32]}"),
+        ('tag-entry', f"📉 SHORT: {str(p.get('entry_short','—'))[:32]}"),
+        ('tag-sl', f"🛑 SL: {sl_display:.1f}%" + ("  (default)" if p.get('sl_pct') is None else "")),
+        ('tag-tp', f"🎯 TP: {tp_display:.1f}%" + ("  (default)" if p.get('tp_pct') is None else "")),
+    ]):
+        with col:
+            st.markdown(f'<span class="tag {cls}">{txt}</span>', unsafe_allow_html=True)
+
+    if p.get('sl_pct') is None or p.get('tp_pct') is None:
+        st.markdown("""<div style='background:#1c1400;border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin:10px 0;font-family:IBM Plex Mono;font-size:0.78rem;color:#f59e0b'>⚠️ <b>DEFAULT RISK APPLIED:</b> SL 1% · TP 2%<br><span style='color:#6b5b3a'>You didn't specify SL/TP. To change them, re-describe your strategy and include e.g. "stop loss 2%, take profit 6%"</span></div>""", unsafe_allow_html=True)
+
+    st.markdown("")
+    if st.button("📊 VISUALIZE ON REAL CANDLES", use_container_width=True):
+        with st.spinner("📡 Fetching market data..."):
+            df, source = fetch_data(symbol, period, uploaded_file)
+        if df is not None and len(df) > 30:
+            st.markdown(f"""<div class="data-source-box">✅ {len(df)} candles from {source}</div>""", unsafe_allow_html=True)
+            with st.spinner("🎨 Building charts..."):
+                df = add_indicators(df, p.get('indicator_params', {}))
+                df = generate_signals(df, p, client=client, description=st.session_state.get('description',''))
+                st.session_state.df = df
+                st.session_state.data_source = source
+                st.session_state.fig_long = draw_chart(df, p, symbol, source, show='long')
+                st.session_state.fig_short = draw_chart(df, p, symbol, source, show='short')
+        else:
+            st.error("Could not fetch data from any source. **Solution**: Upload a CSV file in the sidebar. Format: Date, Open, High, Low, Close columns.")
+
+if st.session_state.get('fig_long') or st.session_state.get('fig_short'):
+    st.markdown('<div class="section-hdr">STEP 3 — YOUR SETUP — LONG & SHORT</div>', unsafe_allow_html=True)
+    col_l, col_r = st.columns(2)
+    with col_l:
+        st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.75rem;color:#4ade80;letter-spacing:2px;margin-bottom:8px'>📈 LONG SETUP</div>""", unsafe_allow_html=True)
+        if st.session_state.get('fig_long'):
+            st.plotly_chart(st.session_state.fig_long, use_container_width=True, config={'displayModeBar': True, 'scrollZoom': True})
+    with col_r:
+        st.markdown("""<div style='font-family:IBM Plex Mono;font-size:0.75rem;color:#f87171;letter-spacing:2px;margin-bottom:8px'>📉 SHORT SETUP</div>""", unsafe_allow_html=True)
+        if st.session_state.get('fig_short'):
+            n_short = int(st.session_state.df['short_signal'].sum()) if st.session_state.get('df') is not None else 0
+            if n_short > 0:
+                st.plotly_chart(st.session_state.fig_short, use_container_width=True, config={'displayModeBar': True, 'scrollZoom': True})
+            else:
+                st.markdown("""<div style='background:#0d0f14;border:1px solid #1e2030;border-radius:10px;padding:40px;text-align:center;font-family:IBM Plex Mono;color:#334155;font-size:0.8rem'>📉 No short signals detected<br><br><span style='color:#1e2030'>You didn't ask for short entries.<br>Re-describe with "short when..." to add them.</span></div>""", unsafe_allow_html=True)
+
+    st.markdown("""<div style='text-align:center;font-family:IBM Plex Mono;font-size:0.78rem;color:#a89060;margin:12px 0'>🔺 Green triangles = Long entries &nbsp;|&nbsp; 🔻 Red triangles = Short entries<br>Dashed = Stop Loss &nbsp;|&nbsp; Dotted = Take Profit</div>""", unsafe_allow_html=True)
+
+    cy, cn = st.columns(2)
+    with cy: yes_btn = st.button("✅ YES — Generate Python Code", use_container_width=True)
+    with cn: no_btn = st.button("❌ NO — Redescribe", use_container_width=True)
+
+    if no_btn:
+        st.session_state.fig_long = None
+        st.session_state.fig_short = None
+        st.session_state.code = None
+        st.info("Refine your description in Step 1.")
+    if yes_btn:
+        with st.spinner("& Generating code..."):
+            st.session_state.code = generate_python_code(client, st.session_state.parsed, symbol, description=st.session_state.get('description', ''))
+
+if st.session_state.code:
+    st.markdown('<div class="section-hdr">STEP 4 — YOUR PYTHON CODE</div>', unsafe_allow_html=True)
+    st.markdown("""<div class="step-card done"><div class="step-num">✅ READY — RUN IN COLAB OR JUPYTER</div>Then paste into <b>Backtest Validator</b> to check for errors.</div>""", unsafe_allow_html=True)
+    st.text_area("Code", value=st.session_state.code, height=320, label_visibility="collapsed")
     st.download_button("⬇️ Download .py file", data=st.session_state.code, file_name=f"{symbol}_strategy.py", mime="text/plain", use_container_width=True)
     st.markdown("""<div style='background:#0d0f14;border:1px solid #f59e0b;border-radius:10px;padding:16px;margin-top:16px;text-align:center'><b style='font-family:IBM Plex Mono;color:#f59e0b'>⚠️ VALIDATE BEFORE TRADING LIVE</b><br><span style='font-family:IBM Plex Mono;color:#6b5b3a;font-size:0.8rem'>Paste code into <b style='color:#e8e0d0'>Backtest Validator</b> to detect lookahead bias and overfitting</span></div>""", unsafe_allow_html=True)
 
