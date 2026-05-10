@@ -434,24 +434,6 @@ def add_premium_discount(df: pd.DataFrame, lookback: int = 50) -> pd.DataFrame:
     df['Range_50pct'] = midpoint
     return df
 
-def add_market_structure(df: pd.DataFrame, lookback: int = 10) -> pd.DataFrame:
-    df = add_higher_highs_lower_lows(df, lookback)
-    df['Bullish_Structure'] = df['HH'] | df['HL']
-    df['Bearish_Structure'] = df['LH'] | df['LL']
-    return df
-
-def add_optimal_trade_entry(df: pd.DataFrame, lookback: int = 20) -> pd.DataFrame:
-    df = add_swing_highs_lows(df, lookback // 4)
-    swing_h = df['High'].where(df['Swing_High']).ffill()
-    swing_l = df['Low'].where(df['Swing_Low']).ffill()
-    fib_618 = swing_h - 0.618 * (swing_h - swing_l)
-    fib_786 = swing_h - 0.786 * (swing_h - swing_l)
-    df['In_OTE_Bullish'] = (df['Close'] >= fib_786) & (df['Close'] <= fib_618)
-    fib_618_bear = swing_l + 0.618 * (swing_h - swing_l)
-    fib_786_bear = swing_l + 0.786 * (swing_h - swing_l)
-    df['In_OTE_Bearish'] = (df['Close'] <= fib_786_bear) & (df['Close'] >= fib_618_bear)
-    return df
-
 def add_killzones(df: pd.DataFrame) -> pd.DataFrame:
     if not hasattr(df.index, 'hour'):
         df['London_KZ'] = False
@@ -618,7 +600,7 @@ def load_csv(uploaded_file):
         try:
             content = raw.decode('utf-8')
             lines = content.strip().split('\n')
-            is_mt5 = ('<DATE>' in lines[0] or '\t' in lines[0] or lines[0].startswith('<'))
+            is_mt5 = ('<DATE>' in lines[0] or '<TIME>' in lines[0] or lines[0].startswith('<'))
             
             if is_mt5:
                 header = lines[0].replace('<','').replace('>','').strip()
@@ -629,81 +611,79 @@ def load_csv(uploaded_file):
                         rows.append(line.strip().split('\t'))
                 df = pd.DataFrame(rows, columns=cols)
                 
+                # Handle MT5 format with separate DATE and TIME columns
                 if 'date' in cols and 'time' in cols:
-                    df['datetime'] = pd.to_datetime(
-                        df['date'] + ' ' + df['time'],
-                        format='%Y.%m.%d %H:%M:%S', errors='coerce'
-                    )
-                    mask = df['datetime'].isna()
-                    if mask.any():
-                        df.loc[mask, 'datetime'] = pd.to_datetime(
-                            df.loc[mask,'date'] + ' ' + df.loc[mask,'time'],
-                            format='%Y.%m.%d %H:%M', errors='coerce'
-                        )
-                    df = df.set_index('datetime')
-                elif 'date' in cols:
+                    # Combine date and time into single datetime column
+                    df['datetime'] = pd.to_datetime(df['date'] + ' ' + df['time'], format='%Y.%m.%d %H:%M:%S', errors='coerce')
+                    df.index = df['datetime']
+                    df = df.drop(columns=['date', 'time', 'datetime'])
+                elif 'date' in cols and 'time' not in cols:
+                    # Single date column (standard case)
                     df.index = pd.to_datetime(df['date'], format='%Y.%m.%d', errors='coerce')
-                    df = df.drop(columns=['date'], errors='ignore')
+                    df = df.drop(columns=['date'])
                 
-                df.index.name = 'Date'
+                # Rename columns to standard names
                 rename_map = {
                     'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close',
-                    'vol': 'Volume', 'tickvol': 'Volume', 'tick volume': 'Volume', 'volume': 'Volume'
+                    'vol': 'Volume', 'tickvol': 'Volume', 'tick volume': 'Volume', 'volume': 'Volume',
+                    'spread': 'Spread'
                 }
                 df = df.rename(columns=rename_map)
+                
+                # Ensure required columns exist
                 required = ['Open','High','Low','Close']
                 if any(c not in df.columns for c in required):
                     st.error(f"MT5 CSV missing columns: {[c for c in required if c not in df.columns]}")
                     return None
+                
+                # Add Volume if missing
                 if 'Volume' not in df.columns:
                     df['Volume'] = 0.0
+                
+                # Select and order columns
                 df = df[['Open','High','Low','Close','Volume']].astype(float)
                 df = df.dropna().sort_index()
-                
-                df = clean_duplicate_columns(df)
-                df = clean_duplicate_index(df)
                 
                 if len(df) > 0:
                     st.success(f"MT5 format detected - {len(df):,} bars loaded")
                     return df
-        except Exception:
-            pass
-        
-        uploaded_file.seek(0)
-        df = pd.read_csv(uploaded_file)
-        df.columns = [c.strip().title() for c in df.columns]
-        
-        date_col = next(
-            (c for c in ['Date','Datetime','Timestamp','Time','Open Time'] if c in df.columns),
-            None
-        )
-        if date_col is None:
-            first_col = df.columns[0]
-            try:
-                pd.to_datetime(df[first_col].iloc[0])
-                date_col = first_col
-            except Exception:
-                st.error("Cannot find date column. Expected: Date, Datetime, Timestamp, or Time")
-                return None
-        
-        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-        df = df.set_index(date_col)
-        df.index.name = 'Date'
-        
-        required = ['Open','High','Low','Close']
-        if any(c not in df.columns for c in required):
-            st.error(f"CSV missing columns: {[c for c in required if c not in df.columns]}")
+            else:
+                # Standard CSV format
+                uploaded_file.seek(0)
+                df = pd.read_csv(uploaded_file)
+                df.columns = [c.strip().title() for c in df.columns]
+                
+                date_col = next(
+                    (c for c in ['Date','Datetime','Timestamp','Time','Open Time'] if c in df.columns),
+                    None
+                )
+                if date_col is None:
+                    first_col = df.columns[0]
+                    try:
+                        pd.to_datetime(df[first_col].iloc[0])
+                        date_col = first_col
+                    except Exception:
+                        st.error("Cannot find date column. Expected: Date, Datetime, Timestamp, or Time")
+                        return None
+                
+                df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+                df = df.set_index(date_col)
+                df.index.name = 'Date'
+                
+                required = ['Open','High','Low','Close']
+                if any(c not in df.columns for c in required):
+                    st.error(f"CSV missing columns: {[c for c in required if c not in df.columns]}")
+                    return None
+                if 'Volume' not in df.columns:
+                    df['Volume'] = 0.0
+                
+                df = df[['Open','High','Low','Close','Volume']].astype(float)
+                df = df.dropna().sort_index()
+                
+                return df
+        except Exception as e:
+            st.error(f"CSV error: {e}")
             return None
-        if 'Volume' not in df.columns:
-            df['Volume'] = 0.0
-        
-        df = df[['Open','High','Low','Close','Volume']].astype(float)
-        df = df.dropna().sort_index()
-        
-        df = clean_duplicate_columns(df)
-        df = clean_duplicate_index(df)
-        
-        return df
     except Exception as e:
         st.error(f"CSV error: {e}")
         return None
@@ -731,7 +711,7 @@ def fetch_data(symbol, period, uploaded_file=None):
 
 # GROQ HELPERS
 def parse_strategy(client, description: str):
-    prompt = "You are a quantitative trading expert.\nParse this trading strategy into structured JSON.\nStrategy: \"" + description + "\"\nReturn ONLY valid JSON:\n{\n  \"entry_long\": \"long entry condition or null if no long\",\n  \"entry_short\": \"short entry condition or null if no short\",\n  \"stop_loss\": \"stop loss description\",\n  \"take_profit\": \"take profit description\",\n  \"indicators\": [\"list of indicators\"],\n  \"strategy_type\": \"trend or mean-reversion or breakout or momentum\",\n  \"sl_pct\": 0.02,\n  \"tp_pct\": 0.06,\n  \"indicator_params\": {\"ema_fast\": 20, \"ema_slow\": 50, \"rsi_period\": 14, \"rsi_overbought\": 70, \"rsi_oversold\": 30},\n  \"summary\": \"one sentence summary\"\n}\nIMPORTANT: If user only says BUY/LONG - set entry_short to null. If user only says SELL/SHORT - set entry_long to null."
+    prompt = "You are a quantitative trading expert. Parse this trading strategy into structured JSON. Strategy: \"" + description + "\" Return ONLY valid JSON: {\"entry_long\": \"long entry condition or null if no long\", \"entry_short\": \"short entry condition or null if no short\", \"stop_loss\": \"stop loss description\", \"take_profit\": \"take profit description\", \"indicators\": [\"list of indicators\"], \"strategy_type\": \"trend or mean-reversion or breakout or momentum\", \"sl_pct\": 0.02, \"tp_pct\": 0.06, \"indicator_params\": {\"ema_fast\": 20, \"ema_slow\": 50, \"rsi_period\": 14, \"rsi_overbought\": 70, \"rsi_oversold\": 30}, \"summary\": \"one sentence summary\"} IMPORTANT: If user only says BUY/LONG - set entry_short to null. If user only says SELL/SHORT - set entry_long to null."
 
     try:
         response = client.chat.completions.create(
@@ -799,7 +779,7 @@ def generate_signal_block(client, description: str, strategy: dict) -> str:
     if params.get('rsi_period'):
         ind_hint += "\nRSI: " + str(params['rsi_period'])
 
-    prompt = "You are a Python quant developer. Translate this trading strategy into Python signal detection code.\nSTRATEGY: \"" + description + "\"\nDIRECTION: " + direction + "\n" + ind_hint + "\n\nAVAILABLE FUNCTIONS:\nINDICATORS: add_ema, add_sma, add_rsi, add_macd, add_bollinger, add_atr, add_stochastic, add_vwap, add_obv, add_volume_spike, add_swing_highs_lows, add_candle_patterns, add_structure_break, add_fair_value_gaps, add_liquidity_levels, add_order_blocks, add_premium_discount, add_market_structure, add_optimal_trade_entry, add_equal_highs_lows, add_higher_highs_lower_lows, add_support_resistance, add_previous_day_levels, add_supertrend, add_cci, add_williams_r, add_mfi, add_donchian, add_keltner, add_inside_outside_bars, add_common_indicators, add_smc_indicators\nSIGNAL HELPERS: crossover, crossunder, above_level, below_level, rising, falling\n\nOUTPUT FORMAT:\n" + signal_template + "\nRULES: First call add_*() for indicators, then write signal conditions. Both long_signal and short_signal MUST be assigned. df['Signal'] MUST be last line. Output ONLY Python lines - no imports, no def, no markdown.\nOUTPUT ONLY THE PYTHON LINES NOW:"
+    prompt = "You are a Python quant developer. Translate this trading strategy into Python signal detection code. STRATEGY: \"" + description + "\" DIRECTION: " + direction + "\n" + ind_hint + "\n\nAVAILABLE FUNCTIONS: INDICATORS: add_ema, add_sma, add_rsi, add_macd, add_bollinger, add_atr, add_stochastic, add_vwap, add_obv, add_volume_spike, add_swing_highs_lows, add_candle_patterns, add_structure_break, add_fair_value_gaps, add_liquidity_levels, add_order_blocks, add_premium_discount, add_market_structure, add_optimal_trade_entry, add_equal_highs_lows, add_higher_highs_lower_lows, add_support_resistance, add_previous_day_levels, add_supertrend, add_cci, add_williams_r, add_mfi, add_donchian, add_keltner, add_inside_outside_bars, add_common_indicators, add_smc_indicators SIGNAL HELPERS: crossover, crossunder, above_level, below_level, rising, falling\n\nOUTPUT FORMAT: " + signal_template + "\nRULES: First call add_*() for indicators, then write signal conditions. Both long_signal and short_signal MUST be assigned. df['Signal'] MUST be last line. Output ONLY Python lines - no imports, no def, no markdown.\nOUTPUT ONLY THE PYTHON LINES NOW:"
 
     try:
         response = client.chat.completions.create(
@@ -863,11 +843,11 @@ def generate_python_code(client, strategy: dict, symbol: str, description: str =
         in_lib = False
         with open(__file__, 'r') as f:
             for line in f:
-                if '# ═══' in line and 'QUANT ALPHA INDICATOR LIBRARY' in line:
+                if '# LIBRARY' in line:
                     in_lib = True
                 if in_lib:
                     lib_lines.append(line)
-                if in_lib and 'LIBRARY_REFERENCE' in line and '"""' in line and len(lib_lines) > 5:
+                if in_lib and 'LIBRARY_REFERENCE' in line:
                     break
         lib_code = ''.join(lib_lines[:400])
     except Exception:
@@ -977,56 +957,56 @@ def plot_results(df):
     colors = ["#f59e0b","#60a5fa","#a78bfa","#34d399","#f87171"]
     for i, col in enumerate(ind_cols[:5]):
         if col in df.columns and not df[col].isna().all():
-            if col == 'BB_Upper' and 'BB_Lower' in df.columns:
-                fig.add_trace(go.Scatter(x=df["Open time"], y=df["BB_Upper"], name="BB Upper", line=dict(color="#f59e0b", width=1, dash="dash"), opacity=0.6), row=1, col=1)
+            if col == "BB_Upper" and "BB_Lower" in df.columns:
+                fig.add_trace(go.Scatter(x=df["Open time"], y=df[col], name="BB Upper", line=dict(color="#f59e0b", width=1, dash="dash"), opacity=0.6), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df["Open time"], y=df["BB_Lower"], name="BB Lower", line=dict(color="#f59e0b", width=1, dash="dash"), fill="tonexty", fillcolor="rgba(245,158,11,0.05)", opacity=0.6), row=1, col=1)
-            elif col not in ['BB_Lower','BB_Mid']:
+            elif col not in ["BB_Lower","BB_Mid"]:
                 fig.add_trace(go.Scatter(x=df["Open time"], y=df[col], name=col, line=dict(color=colors[i % len(colors)], width=1.5), opacity=0.9), row=1, col=1)
     rsi_cols = [c for c in df.columns if c.startswith('RSI_')]
     has_rsi = len(rsi_cols) > 0
-    long_df = df[df['long_signal']] if 'long_signal' in df.columns else df.iloc[0:0]
+    long_df = df[df["long_signal"]] if "long_signal" in df.columns else df.iloc[0:0]
     if not long_df.empty:
-        fig.add_trace(go.Scatter(x=long_df.index, y=long_df['Close']*0.994, mode='markers', name='Long Entry', marker=dict(symbol='triangle-up', size=14, color='#4ade80', line=dict(color='#166534', width=1))), row=1, col=1)
+        fig.add_trace(go.Scatter(x=long_df.index, y=long_df["Close"]*0.994, mode="markers", name="Long Entry", marker=dict(symbol="triangle-up", size=14, color="#4ade80", line=dict(color="#166534", width=1))), row=1, col=1)
         for date, row in long_df.iterrows():
-            entry = float(row['Close'])
+            entry = float(row["Close"])
             sl = entry * (1 - sl_pct)
             tp = entry * (1 + tp_pct)
             try:
                 end_date = df.index[min(df.index.get_loc(date)+8, len(df)-1)]
             except: end_date = date
-            fig.add_shape(type='line', x0=date, x1=end_date, y0=sl, y1=sl, line=dict(color='#ef4444', width=1.2, dash='dash'), row=1, col=1)
-            fig.add_shape(type='line', x0=date, x1=end_date, y0=tp, y1=tp, line=dict(color='#4ade80', width=1.2, dash='dot'), row=1, col=1)
-    short_df = df[df['short_signal']] if 'short_signal' in df.columns else df.iloc[0:0]
+            fig.add_shape(type="line", x0=date, x1=end_date, y0=sl, y1=sl, line=dict(color="#ef4444", width=1.2, dash="dash"), row=1, col=1)
+            fig.add_shape(type="line", x0=date, x1=end_date, y0=tp, y1=tp, line=dict(color="#4ade80", width=1.2, dash="dot"), row=1, col=1)
+    short_df = df[df["short_signal"]] if "short_signal" in df.columns else df.iloc[0:0]
     if not short_df.empty:
-        fig.add_trace(go.Scatter(x=short_df.index, y=short_df['Close']*1.006, mode='markers', name='Short Entry', marker=dict(symbol='triangle-down', size=14, color='#f87171', line=dict(color='#991b1b', width=1))), row=1, col=1)
+        fig.add_trace(go.Scatter(x=short_df.index, y=short_df["Close"]*1.006, mode="markers", name="Short Entry", marker=dict(symbol="triangle-down", size=14, color="#f87171", line=dict(color="#991b1b", width=1))), row=1, col=1)
         for date, row in short_df.iterrows():
-            entry = float(row['Close'])
+            entry = float(row["Close"])
             sl = entry * (1 + sl_pct)
             tp = entry * (1 - tp_pct)
             try:
                 end_date = df.index[min(df.index.get_loc(date)+8, len(df)-1)]
             except: end_date = date
-            fig.add_shape(type='line', x0=date, x1=end_date, y0=sl, y1=sl, line=dict(color='#ef4444', width=1.2, dash='dash'), row=1, col=1)
-            fig.add_shape(type='line', x0=date, x1=end_date, y0=tp, y1=tp, line=dict(color='#4ade80', width=1.2, dash='dot'), row=1, col=1)
+            fig.add_shape(type="line", x0=date, x1=end_date, y0=sl, y1=sl, line=dict(color="#ef4444", width=1.2, dash="dash"), row=1, col=1)
+            fig.add_shape(type="line", x0=date, x1=end_date, y0=tp, y1=tp, line=dict(color="#4ade80", width=1.2, dash="dot"), row=1, col=1)
     
-    if 'Volume' in df.columns and df['Volume'].sum() > 0:
-        bar_colors_list = ['#26a69a' if c >= o else '#ef5350' for c, o in zip(df['Close'], df['Open'])]
+    if "Volume" in df.columns and df["Volume"].sum() > 0:
+        bar_colors_list = ["#26a69a" if c >= o else "#ef5350" for c, o in zip(df["Close"], df["Open"])]
         unique_colors = []
         seen_indices = set()
         for i, color in enumerate(bar_colors_list):
             if i not in seen_indices:
                 unique_colors.append(color)
                 seen_indices.add(i)
-        fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume', marker_color=unique_colors, opacity=0.6), row=2, col=1)
+        fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume", marker_color=unique_colors, opacity=0.6), row=2, col=1)
     elif has_rsi:
         rsi_col = rsi_cols[0]
-        fig.add_trace(go.Scatter(x=df.index, y=df[rsi_col], name=rsi_col, line=dict(color='#a78bfa', width=1.5)), row=2, col=1)
-        fig.add_hline(y=70, line_color='#ef4444', line_dash='dash', line_width=1, opacity=0.6, row=2, col=1)
-        fig.add_hline(y=30, line_color='#4ade80', line_dash='dash', line_width=1, opacity=0.6, row=2, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df[rsi_col], name=rsi_col, line=dict(color="#a78bfa", width=1.5)), row=2, col=1)
+        fig.add_hline(y=70, line_color="#ef4444", line_dash="dash", line_width=1, opacity=0.6, row=2, col=1)
+        fig.add_hline(y=30, line_color="#4ade80", line_dash="dash", line_width=1, opacity=0.6, row=2, col=1)
 
     fig.add_trace(go.Scatter(x=df["Open time"], y=df["Strategy_Equity"], name="Strategy", line=dict(color="#4ade80", width=2)), row=2, col=1)
     fig.add_trace(go.Scatter(x=df["Open time"], y=df["BH_Equity"], name="Buy & Hold", line=dict(color="#64748b", width=1.5, dash="dash")), row=2, col=1)
-    fig.update_layout(height=700, paper_bgcolor="#080a0f", plot_bgcolor="#0d0f14", xaxis_rangeslider_visible=False, font=dict(color="#a89060"), title=dict(text="<b>" + symbol + "</b> - " + summary + "<br><span style='font-size:11px;color:#6b5b3a'>" + str(n_long) + " Long  " + str(n_short) + " Short  | Data Source | Last 80 bars</span>", font=dict(color="#f59e0b", size=13), x=0.01))
+    fig.update_layout(height=700, paper_bgcolor="#080a0f", plot_bgcolor="#0d0f14", xaxis_rangeslider_visible=False, font=dict(color="#a89060", size=11), title=dict(text="<b>" + symbol + "</b> - " + summary + "<br><span style='font-size:11px;color:#6b5b3a'>" + str(n_long) + " Long  " + str(n_short) + " Short  | Data Source | Last 80 bars</span>", font=dict(color="#f59e0b", size=13), x=0.01))
     fig.update_xaxes(gridcolor="#1e2030", zerolinecolor="#1e2030", tickfont=dict(color="#6b5b3a"))
     fig.update_yaxes(gridcolor="#1e2030", zerolinecolor="#1e2030", tickfont=dict(color="#6b5b3a"))
     return fig
@@ -1054,172 +1034,8 @@ def main():
 if __name__ == "__main__":
     main()
 """
-
+    
     return code
-
-# INDICATORS
-def add_indicators(df, params):
-    df = df.copy()
-    ef = params.get('ema_fast', 20)
-    es = params.get('ema_slow', 50)
-    rp = params.get('rsi_period', 14)
-    df['EMA_fast'] = df['Close'].ewm(span=ef, adjust=False).mean()
-    df['EMA_slow'] = df['Close'].ewm(span=es, adjust=False).mean()
-    delta = df['Close'].diff()
-    gain = delta.clip(lower=0).rolling(rp).mean()
-    loss = (-delta.clip(upper=0)).rolling(rp).mean()
-    rs = gain / loss.replace(0, np.nan)
-    df['RSI'] = 100 - (100 / (1 + rs))
-    df['BB_mid'] = df['Close'].rolling(20).mean()
-    std = df['Close'].rolling(20).std()
-    df['BB_upper'] = df['BB_mid'] + 2 * std
-    df['BB_lower'] = df['BB_mid'] - 2 * std
-    return df
-
-def generate_signals(df, strategy, client=None, description=''):
-    df = df.copy()
-    df['long_signal'] = pd.Series(False, index=df.index)
-    df['short_signal'] = pd.Series(False, index=df.index)
-    df['Signal'] = pd.Series(0, index=df.index)
-    
-    if not client or not description:
-        p = strategy.get('indicator_params', {}) or {}
-        stype = strategy.get('strategy_type', 'trend')
-        wants_long = strategy.get('entry_long') is not None
-        wants_short = strategy.get('entry_short') is not None
-        if 'EMA_fast' in df.columns and 'EMA_slow' in df.columns:
-            if wants_long:
-                df['long_signal'] = ((df['EMA_fast'] > df['EMA_slow']) & (df['EMA_fast'].shift(1) <= df['EMA_slow'].shift(1))).fillna(False)
-            if wants_short:
-                df['short_signal'] = ((df['EMA_fast'] < df['EMA_slow']) & (df['EMA_fast'].shift(1) >= df['EMA_slow'].shift(1))).fillna(False)
-        df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)
-        return df
-    
-    signal_block = generate_signal_block(client, description, strategy)
-    exec_globals = {
-        'df': df, 'pd': pd, 'np': np,
-        'add_ema': add_ema, 'add_sma': add_sma, 'add_rsi': add_rsi, 'add_macd': add_macd,
-        'add_bollinger': add_bollinger, 'add_atr': add_atr, 'add_stochastic': add_stochastic,
-        'add_vwap': add_vwap, 'add_obv': add_obv, 'add_volume_spike': add_volume_spike,
-        'add_volume_sma': add_volume_sma, 'add_wma': add_wma, 'add_swing_highs_lows': add_swing_highs_lows,
-        'add_candle_patterns': add_candle_patterns, 'add_structure_break': add_structure_break,
-        'add_fair_value_gaps': add_fair_value_gaps, 'add_liquidity_levels': add_liquidity_levels,
-        'add_order_blocks': add_order_blocks, 'add_premium_discount': add_premium_discount,
-        'add_market_structure': add_market_structure, 'add_optimal_trade_entry': add_optimal_trade_entry,
-        'add_equal_highs_lows': add_equal_highs_lows, 'add_higher_highs_lower_lows': add_higher_highs_lower_lows,
-        'add_support_resistance': add_support_resistance, 'add_previous_day_levels': add_previous_day_levels,
-        'add_supertrend': add_supertrend, 'add_cci': add_cci, 'add_williams_r': add_williams_r,
-        'add_mfi': add_mfi, 'add_donchian': add_donchian, 'add_keltner': add_keltner,
-        'add_inside_outside_bars': add_inside_outside_bars, 'add_common_indicators': add_common_indicators,
-        'add_smc_indicators': add_smc_indicators, 'crossover': crossover, 'crossunder': crossunder,
-        'above_level': above_level, 'below_level': below_level, 'rising': rising, 'falling': falling,
-    }
-    clean_block = '\n'.join(line[4:] if line.startswith('    ') else line for line in signal_block.splitlines())
-    try:
-        exec(clean_block, exec_globals)
-        df = exec_globals['df']
-        if 'long_signal' in df.columns:
-            df['long_signal'] = df['long_signal'].fillna(False).astype(bool)
-        if 'short_signal' in df.columns:
-            df['short_signal'] = df['short_signal'].fillna(False).astype(bool)
-        if 'Signal' not in df.columns:
-            df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)
-    except Exception as e:
-        st.warning(f"Signal execution error: {e}. Using empty signals.")
-    return df
-
-# PLOTLY CHART
-def draw_chart(df, strategy, symbol, data_source, show='both'):
-    df_plot = df.tail(80).copy()
-    
-    df_plot = clean_duplicate_columns(df_plot)
-    df_plot = clean_duplicate_index(df_plot)
-    
-    sl_pct = strategy.get('sl_pct') or 0.02
-    tp_pct = strategy.get('tp_pct') or 0.06
-    stype = strategy.get('strategy_type', 'trend')
-    params = strategy.get('indicator_params', {})
-    ef_span = params.get('ema_fast', 20)
-    es_span = params.get('ema_slow', 50)
-
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.75, 0.25])
-
-    fig.add_trace(go.Candlestick(
-        x=df_plot.index, open=df_plot['Open'], high=df_plot['High'],
-        low=df_plot['Low'], close=df_plot['Close'], name='Price',
-        increasing_line_color='#26a69a', decreasing_line_color='#ef5350',
-        increasing_fillcolor='#26a69a', decreasing_fillcolor='#ef5350',
-    ), row=1, col=1)
-
-    ind_prefixes = ['EMA_','SMA_','BB_','RSI_','MACD','Stoch','ATR_','WMA_','VWAP','KC_','DC_','Supertrend']
-    ind_cols = [c for c in df_plot.columns if any(c.startswith(p) for p in ind_prefixes) and c not in ['BB_Pct','BB_Width']]
-    colors_ind = ['#f59e0b','#60a5fa','#a78bfa','#34d399','#f472b6','#fb923c']
-    for i, col in enumerate(ind_cols[:6]):
-        if col in df_plot.columns and not df_plot[col].isna().all():
-            if col == 'BB_Upper' and 'BB_Lower' in df_plot.columns:
-                fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['BB_Upper'], name='BB Upper', line=dict(color='#f59e0b', width=1, dash='dash'), opacity=0.6), row=1, col=1)
-                fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['BB_Lower'], name='BB Lower', line=dict(color='#f59e0b', width=1, dash='dash'), fill='tonexty', fillcolor='rgba(245,158,11,0.05)', opacity=0.6), row=1, col=1)
-            elif col not in ['BB_Lower','BB_Mid']:
-                fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot[col], name=col, line=dict(color=colors_ind[i % len(colors_ind)], width=1.5), opacity=0.9), row=1, col=1)
-
-    rsi_cols = [c for c in df_plot.columns if c.startswith('RSI_')]
-    has_rsi = len(rsi_cols) > 0
-
-    long_df = df_plot[df_plot['long_signal']] if show in ('long', 'both') else df_plot.iloc[0:0]
-    if not long_df.empty:
-        fig.add_trace(go.Scatter(x=long_df.index, y=long_df['Close']*0.994, mode='markers', name='Long Entry', marker=dict(symbol='triangle-up', size=14, color='#4ade80', line=dict(color='#166534', width=1))), row=1, col=1)
-        for date, row in long_df.iterrows():
-            entry = float(row['Close'])
-            sl = entry * (1 - sl_pct)
-            tp = entry * (1 + tp_pct)
-            try:
-                end_date = df_plot.index[min(df_plot.index.get_loc(date)+8, len(df_plot)-1)]
-            except: end_date = date
-            fig.add_shape(type='line', x0=date, x1=end_date, y0=sl, y1=sl, line=dict(color='#ef4444', width=1.2, dash='dash'), row=1, col=1)
-            fig.add_shape(type='line', x0=date, x1=end_date, y0=tp, y1=tp, line=dict(color='#4ade80', width=1.2, dash='dot'), row=1, col=1)
-
-    short_df = df_plot[df_plot['short_signal']] if show in ('short', 'both') else df_plot.iloc[0:0]
-    if not short_df.empty:
-        fig.add_trace(go.Scatter(x=short_df.index, y=short_df['Close']*1.006, mode='markers', name='Short Entry', marker=dict(symbol='triangle-down', size=14, color='#f87171', line=dict(color='#991b1b', width=1))), row=1, col=1)
-        for date, row in short_df.iterrows():
-            entry = float(row['Close'])
-            sl = entry * (1 + sl_pct)
-            tp = entry * (1 - tp_pct)
-            try:
-                end_date = df_plot.index[min(df_plot.index.get_loc(date)+8, len(df_plot)-1)]
-            except: end_date = date
-            fig.add_shape(type='line', x0=date, x1=end_date, y0=sl, y1=sl, line=dict(color='#ef4444', width=1.2, dash='dash'), row=1, col=1)
-            fig.add_shape(type='line', x0=date, x1=end_date, y0=tp, y1=tp, line=dict(color='#4ade80', width=1.2, dash='dot'), row=1, col=1)
-
-    if 'Volume' in df_plot.columns and df_plot['Volume'].sum() > 0:
-        bar_colors_list = ['#26a69a' if c >= o else '#ef5350' for c, o in zip(df_plot['Close'], df_plot['Open'])]
-        unique_colors = []
-        seen = set()
-        for i, color in enumerate(bar_colors_list):
-            if i not in seen:
-                unique_colors.append(color)
-                seen.add(i)
-        fig.add_trace(go.Bar(x=df_plot.index, y=df_plot['Volume'], name='Volume', marker_color=unique_colors, opacity=0.6), row=2, col=1)
-    elif has_rsi:
-        rsi_col = rsi_cols[0]
-        fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot[rsi_col], name=rsi_col, line=dict(color='#a78bfa', width=1.5)), row=2, col=1)
-        fig.add_hline(y=70, line_color='#ef4444', line_dash='dash', line_width=1, opacity=0.6, row=2, col=1)
-        fig.add_hline(y=30, line_color='#4ade80', line_dash='dash', line_width=1, opacity=0.6, row=2, col=1)
-
-    n_long = len(long_df)
-    n_short = len(short_df)
-
-    fig.update_layout(
-        height=620, paper_bgcolor='#080a0f', plot_bgcolor='#0d0f14',
-        font=dict(family='IBM Plex Mono', color='#a89060', size=11),
-        legend=dict(bgcolor='#0d0f14', bordercolor='#1e2030', borderwidth=1, font=dict(color='#a89060', size=10)),
-        xaxis_rangeslider_visible=False,
-        margin=dict(l=50, r=80, t=70, b=40),
-        title=dict(text="<b>" + symbol + "</b> - " + strategy.get('summary','Strategy') + "<br><span style='font-size:11px;color:#6b5b3a'>" + str(n_long) + " Long  " + str(n_short) + " Short  | " + data_source + " | Last 80 bars</span>", font=dict(color='#f59e0b', size=13), x=0.01)
-    )
-    fig.update_xaxes(gridcolor='#1e2030', zerolinecolor='#1e2030', tickfont=dict(color='#6b5b3a'))
-    fig.update_yaxes(gridcolor='#1e2030', zerolinecolor='#1e2030', tickfont=dict(color='#6b5b3a'))
-    return fig
 
 # MAIN APP
 st.markdown("""
@@ -1251,12 +1067,7 @@ for key in ['parsed','df','fig_long','fig_short','code','data_source','descripti
         st.session_state[key] = None
 
 st.markdown('<div class="section-hdr">STEP 1 - DESCRIBE YOUR STRATEGY</div>', unsafe_allow_html=True)
-st.markdown("""<div class="step-card active"><div class="step-num">PLAIN ENGLISH - NO CODING NEEDED</div>Describe entry conditions, stop loss, and take profit. Only mention SHORT if you want short signals.</div>""", unsafe_allow_html=True)
-
-description = st.text_area("Strategy", placeholder="Buy BTC when the 20 EMA crosses above the 50 EMA. SL 2%, TP 6%.", height=100, label_visibility="collapsed")
-
-c1, c2 = st.columns([3,1])
-with c1: parse_btn = st.button("PARSE STRATEGY", use_container_width=True)
+st.markdown("""<div class="step-card active"><div class="step-num">PLAIN ENGLISH - NO CODING NEEDED</ st.button("PARSE STRATEGY", use_container_width=True)
 with c2: reset_btn = st.button("Reset", use_container_width=True)
 
 if reset_btn:
