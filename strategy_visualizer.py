@@ -1,10 +1,10 @@
 """
-QUANT ALPHA — STRATEGY VISUALIZER v9
+QUANT ALPHA — STRATEGY VISUALIZER v10
 FIXES:
-- Only shows/generates indicators explicitly requested by user
-- Clean static library in exported code (no __file__ reading bugs)
-- Full MT5 CSV support (<DATE>, <TIME>, YYYY.MM.DD format)
-- Smart indicator filtering in charts & backtests
+- Plotly Candlestick kwargs fixed (open/high/low/close)
+- 'params' not defined error resolved
+- MT5 CSV parsing robust
+- Only requested indicators shown/generated
 """
 
 import streamlit as st
@@ -24,12 +24,7 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="Strategy Visualizer | Quant Alpha",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Strategy Visualizer | Quant Alpha", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
 
 # ─────────────────────────────────────────────────────────────
 # CSS
@@ -64,56 +59,32 @@ html, body, [class*="css"] { font-family: 'Syne', sans-serif; background-color: 
 # ─────────────────────────────────────────────────────────────
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────
-BINANCE_SYMBOLS = {
-    'BTC': 'BTCUSDT', 'ETH': 'ETHUSDT', 'SOL': 'SOLUSDT',
-    'BNB': 'BNBUSDT', 'XRP': 'XRPUSDT', 'ADA': 'ADAUSDT',
-    'DOGE': 'DOGEUSDT', 'AVAX': 'AVAXUSDT', 'MATIC': 'MATICUSDT',
-    'LINK': 'LINKUSDT', 'DOT': 'DOTUSDT', 'UNI': 'UNIUSDT',
-    'LTC': 'LTCUSDT', 'ATOM': 'ATOMUSDT', 'NEAR': 'NEARUSDT',
-}
-COINGECKO_IDS = {
-    'BTC': 'bitcoin', 'ETH': 'ethereum', 'SOL': 'solana',
-    'BNB': 'binancecoin', 'XRP': 'ripple', 'ADA': 'cardano',
-    'DOGE': 'dogecoin', 'AVAX': 'avalanche-2', 'MATIC': 'matic-network',
-    'LINK': 'chainlink', 'DOT': 'polkadot', 'UNI': 'uniswap',
-    'LTC': 'litecoin', 'ATOM': 'cosmos', 'NEAR': 'near',
-}
-PERIOD_DAYS    = {'1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '2y': 730}
-BINANCE_LIMITS = {'1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '2y': 730}
+BINANCE_SYMBOLS = {'BTC': 'BTCUSDT', 'ETH': 'ETHUSDT', 'SOL': 'SOLUSDT', 'BNB': 'BNBUSDT', 'XRP': 'XRPUSDT', 'ADA': 'ADAUSDT', 'DOGE': 'DOGEUSDT', 'AVAX': 'AVAXUSDT', 'MATIC': 'MATICUSDT', 'LINK': 'LINKUSDT', 'DOT': 'DOTUSDT', 'UNI': 'UNIUSDT', 'LTC': 'LTCUSDT', 'ATOM': 'ATOMUSDT', 'NEAR': 'NEARUSDT'}
+COINGECKO_IDS = {'BTC': 'bitcoin', 'ETH': 'ethereum', 'SOL': 'solana', 'BNB': 'binancecoin', 'XRP': 'ripple', 'ADA': 'cardano', 'DOGE': 'dogecoin', 'AVAX': 'avalanche-2', 'MATIC': 'matic-network', 'LINK': 'chainlink', 'DOT': 'polkadot', 'UNI': 'uniswap', 'LTC': 'litecoin', 'ATOM': 'cosmos', 'NEAR': 'near'}
+PERIOD_DAYS = {'1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '2y': 730}
 
 # ─────────────────────────────────────────────────────────────
 # GROQ INIT
 # ─────────────────────────────────────────────────────────────
 def init_llm():
-    if not GROQ_AVAILABLE:
-        st.error("groq package not installed.")
-        return None
-    try:
-        return Groq(api_key=st.secrets["GROQ_API_KEY"])
-    except Exception as e:
-        st.error(f"Groq error: {e}")
-        return None
+    if not GROQ_AVAILABLE: return None
+    try: return Groq(api_key=st.secrets["GROQ_API_KEY"])
+    except Exception as e: st.error(f"Groq error: {e}"); return None
 
 # ─────────────────────────────────────────────────────────────
 # DATA FETCHING (MT5 FIXED)
 # ─────────────────────────────────────────────────────────────
 def fetch_binance(symbol: str, period: str):
     sym = BINANCE_SYMBOLS.get(symbol.upper())
-    limit = BINANCE_LIMITS.get(period, 90)
     if not sym: return None
     import time
     for attempt in range(3):
         try:
-            resp = requests.get("https://api.binance.com/api/v3/klines",
-                params={'symbol': sym, 'interval': '1d', 'limit': min(limit, 1000)},
-                timeout=15, headers={'User-Agent': 'QuantAlpha/1.0'})
-            if resp.status_code == 200:
-                data = resp.json()
-                if data:
-                    df = pd.DataFrame(data, columns=['timestamp','Open','High','Low','Close','Volume','ct','qv','nt','tbb','tbq','ignore'])
-                    df['Date'] = pd.to_datetime(df['timestamp'], unit='ms')
-                    df = df.set_index('Date')[['Open','High','Low','Close','Volume']].astype(float).dropna()
-                    return df
+            resp = requests.get("https://api.binance.com/api/v3/klines", params={'symbol': sym, 'interval': '1d', 'limit': 500}, timeout=15)
+            if resp.status_code == 200 and resp.json():
+                df = pd.DataFrame(resp.json(), columns=['t','O','H','L','C','V','x','y','z','a','b','c'])
+                df['Date'] = pd.to_datetime(df['t'], unit='ms')
+                return df.set_index('Date')[['O','H','L','C','V']].astype(float).rename(columns={'O':'Open','H':'High','L':'Low','C':'Close','V':'Volume'})
             if attempt < 2: time.sleep(2)
         except: 
             if attempt < 2: time.sleep(2)
@@ -121,30 +92,25 @@ def fetch_binance(symbol: str, period: str):
 
 def fetch_coingecko(symbol: str, days: int):
     coin_id = COINGECKO_IDS.get(symbol.upper(), symbol.lower())
-    headers = {'User-Agent': 'QuantAlpha/1.0'}
     try:
-        resp = requests.get(f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc?vs_currency=usd&days={days}",
-            timeout=15, headers=headers)
+        resp = requests.get(f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc?vs_currency=usd&days={days}", timeout=15)
         if resp.status_code != 200: return None
         data = resp.json()
         if not data or not isinstance(data, list): return None
-        df = pd.DataFrame(data, columns=['timestamp','Open','High','Low','Close'])
-        df['Date'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df = df.set_index('Date').drop('timestamp', axis=1).astype(float)
+        df = pd.DataFrame(data, columns=['t','O','H','L','C'])
+        df['Date'] = pd.to_datetime(df['t'], unit='ms')
+        df = df.set_index('Date')[['O','H','L','C']].astype(float).rename(columns={'O':'Open','H':'High','L':'Low','C':'Close'})
         df['Volume'] = 0.0
         return df.resample('D').last().dropna()
     except: return None
 
 def load_csv(uploaded_file):
-    """Supports MT5 (<DATE>,<TIME>), standard CSV, and common OHLC formats"""
     try:
         uploaded_file.seek(0)
         raw = uploaded_file.read()
         content = raw.decode('utf-8', errors='ignore')
         lines = content.strip().split('\n')
         first_line = lines[0].strip()
-        
-        # ─ MT5 DETECTION ──────────────────────────────────────
         is_mt5 = '<DATE>' in first_line.upper() or '<TIME>' in first_line.upper() or first_line.startswith('<')
         
         if is_mt5:
@@ -152,81 +118,48 @@ def load_csv(uploaded_file):
             uploaded_file.seek(0)
             df = pd.read_csv(uploaded_file, sep=None, engine='python', skipinitialspace=True)
             df.columns = [c.strip().strip('<>').upper() for c in df.columns]
-            
             col_map = {'DATE':'Date','TIME':'Time','OPEN':'Open','HIGH':'High','LOW':'Low','CLOSE':'Close','VOL':'Volume','TICKVOL':'Volume','VOLUME':'Volume'}
             df = df.rename(columns=col_map)
-            
-            required = ['Date','Open','High','Low','Close']
-            missing = [c for c in required if c not in df.columns]
-            if missing:
-                st.error(f"MT5 CSV missing: {missing} | Found: {list(df.columns)}")
-                return None
-                
+            if 'Date' not in df.columns or 'Open' not in df.columns:
+                st.error(f"MT5 missing columns. Found: {list(df.columns)}"); return None
             if 'Date' in df.columns and 'Time' in df.columns:
-                try:
-                    df['Date'] = pd.to_datetime(df['Date'].astype(str) + ' ' + df['Time'].astype(str), 
-                                                format='%Y.%m.%d %H:%M:%S', errors='coerce')
-                    if df['Date'].isna().any():
-                        df['Date'] = pd.to_datetime(df['Date'].astype(str) + ' ' + df['Time'].astype(str), 
-                                                    format='%Y.%m.%d %H:%M', errors='coerce')
-                except:
-                    df['Date'] = pd.to_datetime(df['Date'].astype(str) + ' ' + df['Time'].astype(str), errors='coerce')
+                try: df['Date'] = pd.to_datetime(df['Date'].astype(str) + ' ' + df['Time'].astype(str), format='%Y.%m.%d %H:%M:%S', errors='coerce')
+                except: df['Date'] = pd.to_datetime(df['Date'].astype(str) + ' ' + df['Time'].astype(str), errors='coerce')
                 df = df.drop(columns=['Time'])
-            elif 'Date' in df.columns:
-                df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-                
-            df = df.set_index('Date')
-            df.index.name = 'Date'
+            elif 'Date' in df.columns: df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+            df = df.set_index('Date'); df.index.name = 'Date'
             if 'Volume' not in df.columns: df['Volume'] = 0.0
             df = df[['Open','High','Low','Close','Volume']].apply(pd.to_numeric, errors='coerce').dropna().sort_index()
             if len(df) > 0: st.success(f"✅ MT5 loaded: {len(df):,} bars")
             return df
 
-        # ── STANDARD CSV ──────────────────────────────────────
         uploaded_file.seek(0)
         df = pd.read_csv(uploaded_file)
         df.columns = [c.strip().title() for c in df.columns]
-        
-        date_col = next((c for c in ['Date','Datetime','Timestamp','Time','Open Time'] if c in df.columns), None)
-        if not date_col:
-            date_col = df.columns[0]
-            try: pd.to_datetime(df[date_col].iloc[0])
-            except: 
-                st.error(f"Cannot find date column. Available: {list(df.columns)}")
-                return None
-                
+        date_col = next((c for c in ['Date','Datetime','Timestamp','Time','Open Time'] if c in df.columns), df.columns[0])
+        try: pd.to_datetime(df[date_col].iloc[0])
+        except: st.error(f"Cannot find date column. Available: {list(df.columns)}"); return None
         df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-        df = df.set_index(date_col)
-        df.index.name = 'Date'
-        
-        required = ['Open','High','Low','Close']
-        missing = [c for c in required if c not in df.columns]
-        if missing:
-            st.error(f"CSV missing: {missing} | Available: {list(df.columns)}")
-            return None
-            
+        df = df.set_index(date_col); df.index.name = 'Date'
+        if not all(c in df.columns for c in ['Open','High','Low','Close']):
+            st.error(f"CSV missing OHLC. Available: {list(df.columns)}"); return None
         if 'Volume' not in df.columns: df['Volume'] = 0.0
-        df = df[['Open','High','Low','Close','Volume']].astype(float).dropna().sort_index()
-        return df
-    except Exception as e:
-        st.error(f"CSV error: {e}")
-        return None
+        return df[['Open','High','Low','Close','Volume']].astype(float).dropna().sort_index()
+    except Exception as e: st.error(f"CSV error: {e}"); return None
 
 def fetch_data(symbol, period, uploaded_file=None):
     if uploaded_file is not None:
         uploaded_file.seek(0)
         df = load_csv(uploaded_file)
         if df is not None and len(df) > 30: return df, "📁 Your CSV"
-    with st.spinner("📡 Trying Binance..."):
-        df = fetch_binance(symbol, period)
+    with st.spinner("📡 Trying Binance..."): df = fetch_binance(symbol, period)
     if df is not None and len(df) > 30: return df, " Binance"
-    with st.spinner("📡 Trying CoinGecko..."):
-        df = fetch_coingecko(symbol, PERIOD_DAYS.get(period, 90))
+    with st.spinner("📡 Trying CoinGecko..."): df = fetch_coingecko(symbol, PERIOD_DAYS.get(period, 90))
     if df is not None and len(df) > 30: return df, " CoinGecko"
     return None, None
 
 # ─────────────────────────────────────────────────────────────
-# INDICATOR LIBRARY (ESSENTIAL ONLY)
+# INDICATOR LIBRARY
 # ─────────────────────────────────────────────────────────────
 def add_ema(df, period): df[f'EMA_{period}'] = df['Close'].ewm(span=period, adjust=False).mean(); return df
 def add_sma(df, period): df[f'SMA_{period}'] = df['Close'].rolling(period).mean(); return df
@@ -247,22 +180,17 @@ def add_atr(df, period=14):
 def add_stochastic(df, k=14, d=3):
     low, high = df['Low'].rolling(k).min(), df['High'].rolling(k).max()
     df['Stoch_K'] = 100*(df['Close']-low)/(high-low); df['Stoch_D'] = df['Stoch_K'].rolling(d).mean(); return df
-
 def crossover(a, b): return (a > b) & (a.shift(1) <= b.shift(1))
 def crossunder(a, b): return (a < b) & (a.shift(1) >= b.shift(1))
 
 # ────────────────────────────────────────────────────────────
-# SMART INDICATOR LOADER (ONLY ADDS REQUESTED)
-# ─────────────────────────────────────────────────────────────
+# SMART INDICATOR LOADER
+# ────────────────────────────────────────────────────────────
 def add_indicators(df, params, indicators_list=None):
-    df = df.copy()
-    indicators_list = indicators_list or []
-    params = params or {}
+    df = df.copy(); indicators_list = indicators_list or []; params = params or {}
     ind_lower = [i.lower() for i in indicators_list]
-    
     if any('ema' in i for i in ind_lower) or not indicators_list:
-        df = add_ema(df, params.get('ema_fast', 20))
-        df = add_ema(df, params.get('ema_slow', 50))
+        df = add_ema(df, params.get('ema_fast', 20)); df = add_ema(df, params.get('ema_slow', 50))
     if any('sma' in i for i in ind_lower): df = add_sma(df, params.get('sma_period', 20))
     if any('rsi' in i for i in ind_lower): df = add_rsi(df, params.get('rsi_period', 14))
     if any('bb' in i or 'bollinger' in i for i in ind_lower): df = add_bollinger(df, params.get('bb_period', 20), params.get('bb_std', 2.0))
@@ -297,8 +225,7 @@ Rules: null if not requested. Only list indicators actually mentioned."""
         res['sl_pct'] = res.get('sl_pct') or 0.02; res['tp_pct'] = res.get('tp_pct') or 0.06
         res['indicators'] = res.get('indicators') or []; res['indicator_params'] = res.get('indicator_params') or {}
         return res
-    except Exception as e:
-        st.error(f"Parse error: {e}"); return None
+    except Exception as e: st.error(f"Parse error: {e}"); return None
 
 def detect_features(desc):
     d = desc.lower()
@@ -324,7 +251,8 @@ Direction: {dir_rule}
 Indicators: {', '.join(strat.get('indicators',[]))}
 Params: {strat.get('indicator_params',{})}
 
-Available: add_ema, add_sma, add_rsi, add_macd, add_bollinger, add_atr, add_stochastic, crossover, crossunder
+Available: add_ema(df, period), add_sma, add_rsi, add_macd, add_bollinger, add_atr, add_stochastic, crossover, crossunder
+CRITICAL: Use concrete numbers from Params (e.g., add_ema(df, 20)). DO NOT use a 'params' variable.
 Format:
 {tmpl}
 Rules: Call add_* first. Assign both signals. df['Signal'] last. NO markdown. ONLY Python lines."""
@@ -333,23 +261,20 @@ Rules: Call add_* first. Assign both signals. df['Signal'] last. NO markdown. ON
         text = resp.choices[0].message.content.strip()
         if '```' in text: text = text.split('```')[-2] if text.count('```')>=2 else text.split('```')[1]
         lines = [l for l in text.splitlines() if l.strip() and not l.strip().startswith(('import','from'))]
-        # Auto-repair
-        if "df['Signal']" not in '\n'.join(lines):
-            lines.append("df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)")
+        if "df['Signal']" not in '\n'.join(lines): lines.append("df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)")
         if "long_signal" not in '\n'.join(lines): lines.insert(0, "df['long_signal'] = pd.Series(False, index=df.index)")
         if "short_signal" not in '\n'.join(lines): lines.insert(0, "df['short_signal'] = pd.Series(False, index=df.index)")
         return '\n'.join('    '+l.lstrip() for l in lines if l.strip())
     except Exception as e:
-        return f"    df['long_signal'] = pd.Series(False, index=df.index)\n    df['short_signal'] = pd.Series(False, index=df.index)\n    df['Signal'] = 0\n    # Error: {e}"
+        return f"    df['long_signal'] = pd.Series(False, index=df.index)\n    df['short_signal'] = pd.Series(False, index=df.index)\n    df['Signal'] = 0"
 
 # ─────────────────────────────────────────────────────────────
-# CODE GENERATION (CLEAN STATIC LIBRARY)
+# CODE GENERATION (STATIC LIB + FIXED PLOTLY KWARGS)
 # ─────────────────────────────────────────────────────────────
 def generate_python_code(client, strat, symbol, desc=''):
     sym = BINANCE_SYMBOLS.get(symbol.upper(), 'BTCUSDT')
     sl, tp = strat.get('sl_pct',0.02), strat.get('tp_pct',0.06)
     sig = gen_signal_block(client, desc, strat)
-    f = detect_features(desc)
     
     lib = '''import pandas as pd, numpy as np
 def add_ema(df, p): df[f'EMA_{p}']=df['Close'].ewm(span=p,adjust=False).mean(); return df
@@ -371,7 +296,7 @@ def fetch():
     r = requests.get("https://api.binance.com/api/v3/klines", params={{"symbol":"{sym}","interval":"1d","limit":365}}).json()
     df = pd.DataFrame(r, columns=["t","O","H","L","C","V","x","y","z","a","b","c"])
     df["Date"] = pd.to_datetime(df["t"], unit="ms")
-    return df.set_index("Date")[["O","H","L","C","V"]].astype(float).rename(columns={"O":"Open","H":"High","L":"Low","C":"Close","V":"Volume"})
+    return df.set_index("Date")[["O","H","L","C","V"]].astype(float).rename(columns={{"O":"Open","H":"High","L":"Low","C":"Close","V":"Volume"}})
 
 def signals(df):
 {sig}
@@ -409,8 +334,8 @@ def metrics(df):
 
 def plot(df, sym="{symbol}", summary="{strat.get('summary','Strategy')}"):
     fig=make_subplots(rows=2,cols=1,shared_xaxes=True,vertical_spacing=0.05,row_heights=[0.7,0.3])
-    fig.add_trace(go.Candlestick(x=df.index,o=df["Open"],h=df["High"],l=df["Low"],c=df["Close"],name="Price",
-        increasing_line_color="#26a69a",decreasing_line_color="#ef5350"),row=1,col=1)
+    fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"], name="Price",
+        increasing_line_color="#26a69a", decreasing_line_color="#ef5350"), row=1, col=1)
     for c in ["EMA_20","EMA_50","RSI_14","BB_Upper","BB_Lower","MACD","ATR_14","Stoch_K"]:
         if c in df.columns and not df[c].isna().all(): fig.add_trace(go.Scatter(x=df.index,y=df[c],name=c),row=1,col=1)
     le=df[df["long_signal"]]; se=df[df["short_signal"]]
@@ -419,7 +344,7 @@ def plot(df, sym="{symbol}", summary="{strat.get('summary','Strategy')}"):
     fig.add_trace(go.Scatter(x=df.index,y=df["Eq"],name="Strategy",line=dict(color="#4ade80")),row=2,col=1)
     fig.add_trace(go.Scatter(x=df.index,y=df["BH"],name="B&H",line=dict(color="#64748b",dash="dash")),row=2,col=1)
     fig.update_layout(height=650,paper_bgcolor="#080a0f",plot_bgcolor="#0d0f14",font=dict(color="#a89060"),
-        title=f"<b>{sym}</b> — {{summary}}", xaxis_rangeslider_visible=False)
+        title=f"<b>{{sym}}</b> — {{summary}}", xaxis_rangeslider_visible=False)
     return fig
 
 if __name__=="__main__":
@@ -430,7 +355,7 @@ if __name__=="__main__":
     return code
 
 # ─────────────────────────────────────────────────────────────
-# APP SIGNAL RUNNER & CHART
+# APP SIGNAL RUNNER & CHART (FIXED PLOTLY + PARAMS)
 # ─────────────────────────────────────────────────────────────
 def run_signals_app(df, strat, client=None, desc=''):
     df = df.copy()
@@ -447,16 +372,19 @@ def run_signals_app(df, strat, client=None, desc=''):
         
     sig = gen_signal_block(client, desc, strat)
     try:
-        g = {'df':df,'pd':pd,'np':np,'add_ema':add_ema,'add_sma':add_sma,'add_rsi':add_rsi,
-             'add_macd':add_macd,'add_bollinger':add_bollinger,'add_atr':add_atr,'add_stochastic':add_stochastic,
-             'crossover':crossover,'crossunder':crossunder}
-        exec('\n'.join(l[4:] if l.startswith('    ') else l for l in sig.splitlines()), g)
+        params = strat.get('indicator_params', {})
+        g = {'df':df, 'pd':pd, 'np':np, 'params':params,
+             'add_ema':add_ema, 'add_sma':add_sma, 'add_rsi':add_rsi,
+             'add_macd':add_macd, 'add_bollinger':add_bollinger, 'add_atr':add_atr,
+             'add_stochastic':add_stochastic, 'crossover':crossover, 'crossunder':crossunder}
+        clean = '\n'.join(l[4:] if l.startswith('    ') else l for l in sig.splitlines())
+        exec(clean, g)
         df = g['df']
         df['long_signal'] = df.get('long_signal', pd.Series(False, index=df.index)).fillna(False).astype(bool)
         df['short_signal'] = df.get('short_signal', pd.Series(False, index=df.index)).fillna(False).astype(bool)
         df['Signal'] = df['long_signal'].astype(int) - df['short_signal'].astype(int)
     except Exception as e:
-        st.warning(f"Signal error: {e}")
+        st.warning(f"Signal execution warning: {e}")
     return df
 
 def draw_chart(df, strat, symbol, source, show='both'):
@@ -464,10 +392,13 @@ def draw_chart(df, strat, symbol, source, show='both'):
     sl, tp = strat.get('sl_pct',0.02), strat.get('tp_pct',0.06)
     req = strat.get('indicators', [])
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.75, 0.25])
-    fig.add_trace(go.Candlestick(x=dp.index,o=dp['Open'],h=dp['High'],l=dp['Low'],c=dp['Close'],name="Price",
-        increasing_line_color="#26a69a",decreasing_line_color="#ef5350"),row=1,col=1)
     
-    # Filter indicators
+    # ✅ FIXED: Plotly requires full keyword names
+    fig.add_trace(go.Candlestick(
+        x=dp.index, open=dp['Open'], high=dp['High'], low=dp['Low'], close=dp['Close'],
+        name="Price", increasing_line_color="#26a69a", decreasing_line_color="#ef5350"
+    ), row=1, col=1)
+    
     ind_cols = [c for c in dp.columns if any(c.startswith(p) for p in ['EMA_','SMA_','BB_','RSI_','MACD','Stoch','ATR_'])]
     if req:
         rl = [r.lower() for r in req]
@@ -529,7 +460,7 @@ if st.session_state.parsed:
     Indicators: {', '.join(p.get('indicators',[]))}<br>
     SL: {(p.get('sl_pct') or 0.01)*100:.1f}% | TP: {(p.get('tp_pct') or 0.02)*100:.1f}%</div>""", unsafe_allow_html=True)
     if st.button("📊 VISUALIZE", use_container_width=True):
-        with st.spinner("📡 Fetching..."): df, src = fetch_data(symbol, period, uploaded)
+        with st.spinner(" Fetching..."): df, src = fetch_data(symbol, period, uploaded)
         if df is not None and len(df)>30:
             with st.spinner(" Charting..."):
                 df = add_indicators(df, p.get('indicator_params',{}), p.get('indicators',[]))
@@ -542,7 +473,7 @@ if st.session_state.parsed:
 if st.session_state.fig_l or st.session_state.fig_s:
     st.markdown('<div class="section-hdr">STEP 3 — CHARTS</div>', unsafe_allow_html=True)
     l,r = st.columns(2)
-    with l: st.markdown("📈 LONG"); st.plotly_chart(st.session_state.fig_l, use_container_width=True)
+    with l: st.markdown(" LONG"); st.plotly_chart(st.session_state.fig_l, use_container_width=True)
     with r: 
         st.markdown("📉 SHORT")
         n_s = int(st.session_state.df['short_signal'].sum()) if st.session_state.df is not None else 0
